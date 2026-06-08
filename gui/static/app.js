@@ -106,7 +106,9 @@ function initSSE() {
     const data = JSON.parse(e.data);
     sessionActive = true;
     updateUI();
-    addSystemMsg(`会话已启动 · ${data.model}`);
+    const topbarModel = document.getElementById('topbar-model');
+    if (topbarModel) topbarModel.textContent = (data.model || '').replace('claude-', '').toUpperCase();
+    addSystemMsg(`SESSION_STARTED · ${data.model}`);
   });
 
   eventSource.addEventListener('session_stopped', (e) => {
