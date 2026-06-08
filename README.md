@@ -31,7 +31,7 @@
 **Windows（推荐）**
 
 ```bat
-gui\start.bat
+start.bat
 ```
 
 **跨平台**
