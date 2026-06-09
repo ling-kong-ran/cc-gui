@@ -7,6 +7,7 @@ ccb 的 stream-json input 模式不可靠，改为 text stdin + stream-json outp
 import asyncio
 import json
 import os
+import time
 from typing import Optional, Callable, Any
 from pathlib import Path
 
@@ -57,6 +58,7 @@ def get_available_clis() -> list[dict]:
 _available = _detect_available_clis()
 _current_cli = _available[0]["path"] if _available else "claude"
 DEFAULT_CWD = str(Path(__file__).parent.resolve())  # 项目根目录
+_slash_command_cache: dict[str, dict] = {}
 
 def get_current_cli() -> str:
     return _current_cli
@@ -64,6 +66,133 @@ def get_current_cli() -> str:
 def set_current_cli(path: str):
     global _current_cli
     _current_cli = path
+
+
+async def discover_slash_commands(
+    model: str,
+    cwd: Optional[str] = None,
+    skip_permissions: bool = True,
+    cache_ttl: int = 300,
+) -> dict:
+    """Read dynamic slash command metadata from the CLI init event."""
+    run_cwd = cwd or DEFAULT_CWD
+    cli = get_current_cli()
+    cache_key = json.dumps(
+        {"cli": cli, "model": model, "cwd": run_cwd, "skip": skip_permissions},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    cached = _slash_command_cache.get(cache_key)
+    now = time.time()
+    if cached and now - cached.get("time", 0) < cache_ttl:
+        return dict(cached["data"])
+
+    cmd = [
+        cli,
+        "-p",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--model", model,
+    ]
+    if skip_permissions:
+        cmd += ["--dangerously-skip-permissions"]
+
+    proc = None
+    stderr_lines: list[str] = []
+    stderr_task = None
+
+    async def read_stderr(process: asyncio.subprocess.Process):
+        if not process.stderr:
+            return
+        try:
+            while True:
+                line = await process.stderr.readline()
+                if not line:
+                    break
+                stderr_lines.append(line.decode("utf-8", errors="replace").strip())
+        except asyncio.CancelledError:
+            pass
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=run_cwd,
+            limit=1024 * 1024 * 5,
+        )
+        stderr_task = asyncio.create_task(read_stderr(proc))
+
+        if proc.stdin:
+            proc.stdin.write(b"/help\n")
+            await proc.stdin.drain()
+            proc.stdin.close()
+
+        init_event = None
+        deadline = time.time() + 10
+        while time.time() < deadline and proc.stdout:
+            timeout = max(0.1, deadline - time.time())
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=timeout)
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace").strip()
+            if not text:
+                continue
+            try:
+                event = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "system" and event.get("subtype") == "init":
+                init_event = event
+                break
+
+        data = {
+            "slash_commands": [],
+            "skills": [],
+            "agents": [],
+            "model": model,
+            "cli": cli,
+            "error": None,
+        }
+        if init_event:
+            data.update({
+                "slash_commands": init_event.get("slash_commands") or [],
+                "skills": init_event.get("skills") or [],
+                "agents": init_event.get("agents") or [],
+                "model": init_event.get("model") or model,
+                "version": init_event.get("claude_code_version") or "",
+            })
+            _slash_command_cache[cache_key] = {"time": now, "data": dict(data)}
+            return data
+
+        data["error"] = "\n".join(line for line in stderr_lines if line).strip() or "CLI 未返回初始化事件"
+        return data
+    except Exception as exc:
+        return {
+            "slash_commands": [],
+            "skills": [],
+            "agents": [],
+            "model": model,
+            "cli": cli,
+            "error": str(exc),
+        }
+    finally:
+        if proc:
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+                await proc.wait()
+        if stderr_task:
+            stderr_task.cancel()
 
 
 class CCBSession:

@@ -47,6 +47,7 @@ async function loadDefaultCwd() {
     const data = await resp.json();
     if (data.cwd && !cwdInput.value.trim()) {
       cwdInput.value = data.cwd;
+      scheduleSlashCommandReload();
     }
   } catch (e) { /* ignore */ }
 }
@@ -129,6 +130,7 @@ async function loadClis() {
         body: JSON.stringify({ path: cliSelect.value }),
       });
       addSystemMsg(`已切换命令行工具: ${cliSelect.value}`);
+      loadSlashCommands();
     });
   } catch (e) { /* ignore */ }
 }
@@ -140,13 +142,16 @@ async function loadModels() {
     const availableModels = Array.isArray(models) ? models.filter(Boolean) : [];
     if (!availableModels.length) {
       modelSelect.innerHTML = '<option value="claude-sonnet-4-6">Sonnet 4.6（默认）</option>';
+      scheduleSlashCommandReload();
       return;
     }
     modelSelect.innerHTML = availableModels.map((model, idx) => (
       `<option value="${esc(model)}" ${idx === 0 ? 'selected' : ''}>${esc(formatModelName(model))}</option>`
     )).join('');
+    scheduleSlashCommandReload();
   } catch (e) {
     modelSelect.innerHTML = '<option value="claude-sonnet-4-6">Sonnet 4.6（默认）</option>';
+    scheduleSlashCommandReload();
   }
 }
 
@@ -482,10 +487,17 @@ function addSystemMsg(text, isError) {
 const btnAttach = document.getElementById('btn-attach');
 const fileInput = document.getElementById('file-input');
 const attachmentsBar = document.getElementById('attachments-bar');
+const slashCommandPanel = document.getElementById('slash-command-panel');
 let attachedFiles = []; // [{name, path, isImage}]
+let slashCommands = [];
+let slashCommandMatches = [];
+let slashCommandIndex = 0;
+let slashCommandLoadTimer = null;
 
 function initInput() {
   inputEl.addEventListener('keydown', (e) => {
+    if (handleSlashCommandKeydown(e)) return;
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -495,6 +507,7 @@ function initInput() {
   inputEl.addEventListener('input', () => {
     inputEl.style.height = 'auto';
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
+    updateSlashCommandPanel();
   });
 
   // 粘贴图片
@@ -514,6 +527,9 @@ function initInput() {
   btnSend.addEventListener('click', sendMessage);
   btnStop.addEventListener('click', () => sendAction('interrupt'));
   btnNewSession.addEventListener('click', startNewSession);
+  modelSelect.addEventListener('change', loadSlashCommands);
+  cwdInput.addEventListener('change', loadSlashCommands);
+  cwdInput.addEventListener('blur', loadSlashCommands);
 
   // 附件按钮 —— 打开自定义文件选择器
   btnAttach.addEventListener('click', () => openFilePicker());
@@ -523,6 +539,136 @@ function initInput() {
     }
     fileInput.value = '';
   });
+
+  document.addEventListener('click', (e) => {
+    if (!slashCommandPanel.contains(e.target) && e.target !== inputEl) {
+      closeSlashCommandPanel();
+    }
+  });
+
+  loadSlashCommands();
+}
+
+function scheduleSlashCommandReload() {
+  clearTimeout(slashCommandLoadTimer);
+  slashCommandLoadTimer = setTimeout(loadSlashCommands, 150);
+}
+
+async function loadSlashCommands() {
+  const params = new URLSearchParams();
+  if (modelSelect.value) params.set('model', modelSelect.value);
+  if (cwdInput.value.trim()) params.set('cwd', cwdInput.value.trim());
+
+  try {
+    const resp = await fetch(`/api/slash-commands?${params.toString()}`);
+    const data = await resp.json();
+    const commands = Array.isArray(data) ? data : (data.commands || []);
+    const seen = new Set();
+    slashCommands = commands
+      .filter(cmd => cmd.name && !seen.has(cmd.name) && seen.add(cmd.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    slashCommands = [];
+  }
+
+  updateSlashCommandPanel();
+}
+
+function getSlashQuery() {
+  const value = inputEl.value;
+  const cursor = inputEl.selectionStart || 0;
+  if (!value.startsWith('/') || cursor !== value.length || value.includes('\n') || /\s/.test(value)) {
+    return null;
+  }
+  return value.slice(1).toLowerCase();
+}
+
+function updateSlashCommandPanel() {
+  const query = getSlashQuery();
+  if (query === null) {
+    closeSlashCommandPanel();
+    return;
+  }
+
+  slashCommandMatches = slashCommands.filter(cmd => (
+    cmd.name.slice(1).toLowerCase().includes(query) ||
+    (cmd.description || '').toLowerCase().includes(query)
+  )).slice(0, 10);
+  slashCommandIndex = Math.min(slashCommandIndex, Math.max(slashCommandMatches.length - 1, 0));
+
+  if (!slashCommandMatches.length) {
+    slashCommandPanel.innerHTML = '<div class="slash-command-empty">未找到匹配命令</div>';
+    slashCommandPanel.style.display = 'block';
+    return;
+  }
+
+  slashCommandPanel.innerHTML = slashCommandMatches.map((cmd, idx) => `
+    <button type="button" class="slash-command-item${idx === slashCommandIndex ? ' active' : ''}" data-idx="${idx}">
+      <span class="slash-command-name">${esc(cmd.name)}</span>
+      <span class="slash-command-desc">${esc(cmd.description || '')}</span>
+    </button>
+  `).join('');
+  slashCommandPanel.style.display = 'block';
+
+  slashCommandPanel.querySelectorAll('.slash-command-item').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      slashCommandIndex = Number(btn.dataset.idx || 0);
+      renderSlashCommandActiveState();
+    });
+    btn.addEventListener('click', () => {
+      selectSlashCommand(Number(btn.dataset.idx || 0));
+    });
+  });
+}
+
+function renderSlashCommandActiveState() {
+  slashCommandPanel.querySelectorAll('.slash-command-item').forEach((item, idx) => {
+    item.classList.toggle('active', idx === slashCommandIndex);
+  });
+}
+
+function handleSlashCommandKeydown(e) {
+  if (slashCommandPanel.style.display === 'none') return false;
+  if (!slashCommandMatches.length && e.key !== 'Escape') return false;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    slashCommandIndex = (slashCommandIndex + 1) % slashCommandMatches.length;
+    renderSlashCommandActiveState();
+    return true;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    slashCommandIndex = (slashCommandIndex - 1 + slashCommandMatches.length) % slashCommandMatches.length;
+    renderSlashCommandActiveState();
+    return true;
+  }
+  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+    e.preventDefault();
+    selectSlashCommand(slashCommandIndex);
+    return true;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeSlashCommandPanel();
+    return true;
+  }
+  return false;
+}
+
+function selectSlashCommand(index) {
+  const cmd = slashCommandMatches[index];
+  if (!cmd) return;
+  inputEl.value = `${cmd.name} `;
+  inputEl.focus();
+  inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length;
+  closeSlashCommandPanel();
+}
+
+function closeSlashCommandPanel() {
+  slashCommandPanel.style.display = 'none';
+  slashCommandMatches = [];
+  slashCommandIndex = 0;
 }
 
 async function uploadFile(file) {

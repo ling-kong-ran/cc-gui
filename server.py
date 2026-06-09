@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from ccb_bridge import SessionManager, get_available_clis, get_current_cli, set_current_cli
+from ccb_bridge import SessionManager, discover_slash_commands, get_available_clis, get_current_cli, set_current_cli
 from config_manager import (
     get_settings,
     save_settings,
@@ -71,6 +71,49 @@ def persist_result_cost(client_id: str, event: dict) -> dict:
 def get_default_model() -> str:
     models = get_available_models()
     return models[0] if models else "claude-sonnet-4-6"
+
+
+def format_slash_commands(discovered: dict) -> dict:
+    """Build frontend command items from CLI-discovered slash command names."""
+    local_skills = {item.get("name"): item for item in list_skills() if item.get("name")}
+    cli_skills = set(discovered.get("skills") or [])
+    commands = []
+    seen = set()
+
+    for raw_name in discovered.get("slash_commands") or []:
+        if not raw_name:
+            continue
+        name = str(raw_name).strip()
+        if not name:
+            continue
+        display_name = name if name.startswith("/") else f"/{name}"
+        if display_name in seen:
+            continue
+        seen.add(display_name)
+
+        skill_name = name[1:] if name.startswith("/") else name
+        skill = local_skills.get(skill_name)
+        source = "skill" if skill_name in cli_skills or skill else "cli"
+        description = ""
+        if skill:
+            description = skill.get("description") or "运行该技能"
+        elif source == "skill":
+            description = "运行该技能"
+        else:
+            description = "CLI 动态命令"
+
+        commands.append({
+            "name": display_name,
+            "description": description,
+            "source": source,
+        })
+
+    return {
+        "commands": sorted(commands, key=lambda item: item["name"].lower()),
+        "model": discovered.get("model") or "",
+        "version": discovered.get("version") or "",
+        "error": discovered.get("error"),
+    }
 
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -625,6 +668,12 @@ async def handle_api_get(path: str, writer: asyncio.StreamWriter, query: dict = 
         data = list_agents()
     elif path == "/api/models":
         data = get_available_models()
+    elif path == "/api/slash-commands":
+        query = query or {}
+        model = query.get("model", [get_default_model()])[0] or get_default_model()
+        cwd = query.get("cwd", [DEFAULT_CWD])[0] or DEFAULT_CWD
+        discovered = await discover_slash_commands(model=model, cwd=cwd)
+        data = format_slash_commands(discovered)
     elif path == "/api/clis":
         data = {"available": get_available_clis(), "current": get_current_cli()}
     elif path == "/api/default-cwd":
