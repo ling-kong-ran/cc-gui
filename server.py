@@ -26,7 +26,7 @@ from config_manager import (
     list_agents,
     get_available_models,
 )
-from session_store import list_sessions, save_session, delete_session, load_session_history
+from session_store import list_sessions, save_session, add_session_cost, delete_session, load_session_history
 
 STATIC_DIR = Path(__file__).parent / "static"
 DEFAULT_CWD = str(Path(__file__).parent.resolve())  # 项目根目录作为默认 CWD
@@ -45,6 +45,32 @@ client_session_ids: dict[str, str] = {}
 
 # 每个 client 的会话参数（model, cwd）
 client_meta: dict[str, dict] = {}
+
+
+def persist_result_cost(client_id: str, event: dict) -> dict:
+    """把单轮 result 费用累加到当前会话，并把累计值附加给前端。"""
+    try:
+        turn_cost = float(event.get("total_cost_usd") or 0)
+    except (TypeError, ValueError):
+        turn_cost = 0
+
+    if turn_cost <= 0:
+        return event
+
+    sid = event.get("session_id") or client_session_ids.get(client_id)
+    if not sid:
+        return event
+
+    total_cost = add_session_cost(sid, turn_cost)
+    if total_cost > 0:
+        event = dict(event)
+        event["session_total_cost_usd"] = total_cost
+    return event
+
+
+def get_default_model() -> str:
+    models = get_available_models()
+    return models[0] if models else "claude-sonnet-4-6"
 
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -477,7 +503,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
     action = data.get("action", "")
 
     if action == "new_session":
-        model = data.get("model", "claude-sonnet-4-6")
+        model = data.get("model") or get_default_model()
         cwd = data.get("cwd")
         skip_perms = data.get("skip_permissions", True)
 
@@ -504,7 +530,9 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 meta = client_meta.get(client_id, {})
                 save_session(sid, title, meta.get("model", model), meta.get("cwd", cwd or ""))
                 await push_event(client_id, "session_id_captured", event)
-            elif evt_type in ("assistant", "system", "result", "error", "process_ended"):
+            elif evt_type == "result":
+                await push_event(client_id, evt_type, persist_result_cost(client_id, event))
+            elif evt_type in ("assistant", "system", "error", "process_ended"):
                 # ccb 高层事件直接按类型推送，前端有对应 listener
                 await push_event(client_id, evt_type, event)
             # 其他事件（hook_started 等）忽略
@@ -515,7 +543,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
     elif action == "resume_session":
         resume_id = data.get("session_id", "")
-        model = data.get("model", "claude-sonnet-4-6")
+        model = data.get("model") or get_default_model()
         cwd = data.get("cwd")
         skip_perms = data.get("skip_permissions", True)
 
@@ -538,7 +566,9 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 meta = client_meta.get(client_id, {})
                 save_session(sid, "", meta.get("model", model), meta.get("cwd", cwd or ""))
                 await push_event(client_id, "session_id_captured", event)
-            elif evt_type in ("assistant", "system", "result", "error", "process_ended"):
+            elif evt_type == "result":
+                await push_event(client_id, evt_type, persist_result_cost(client_id, event))
+            elif evt_type in ("assistant", "system", "error", "process_ended"):
                 await push_event(client_id, evt_type, event)
             # 其他事件忽略
 

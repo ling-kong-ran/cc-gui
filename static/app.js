@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initInput();
   loadDefaultCwd();
   loadClis();
+  loadModels();
   loadConfig();
   loadSessions();
 });
@@ -130,6 +131,23 @@ async function loadClis() {
       addSystemMsg(`已切换命令行工具: ${cliSelect.value}`);
     });
   } catch (e) { /* ignore */ }
+}
+
+async function loadModels() {
+  try {
+    const resp = await fetch('/api/models');
+    const models = await resp.json();
+    const availableModels = Array.isArray(models) ? models.filter(Boolean) : [];
+    if (!availableModels.length) {
+      modelSelect.innerHTML = '<option value="claude-sonnet-4-6">Sonnet 4.6（默认）</option>';
+      return;
+    }
+    modelSelect.innerHTML = availableModels.map((model, idx) => (
+      `<option value="${esc(model)}" ${idx === 0 ? 'selected' : ''}>${esc(formatModelName(model))}</option>`
+    )).join('');
+  } catch (e) {
+    modelSelect.innerHTML = '<option value="claude-sonnet-4-6">Sonnet 4.6（默认）</option>';
+  }
 }
 
 // ─── 导航 ────────────────────────────────────────────────────
@@ -414,10 +432,14 @@ function handleResult(data) {
   streamBlocks = {};
   updateUI();
 
-  if (data.total_cost_usd) {
-    totalCost = data.total_cost_usd;
-    costDisplay.style.display = 'block';
-    costValue.textContent = totalCost.toFixed(4);
+  const turnCost = Number(data.total_cost_usd || 0);
+  const persistedCost = Number(data.session_total_cost_usd || 0);
+  if (Number.isFinite(persistedCost) && persistedCost > 0) {
+    totalCost = persistedCost;
+    renderCost();
+  } else if (Number.isFinite(turnCost) && turnCost > 0) {
+    totalCost += turnCost;
+    renderCost();
   }
 
   if (data.is_error && data.errors) {
@@ -581,7 +603,7 @@ function startNewSession() {
     streamBlocks = {};
     totalCost = 0;
     currentSessionId = null;
-    costDisplay.style.display = 'none';
+    renderCost();
     addSystemMsg('会话已停止，可修改工作目录和模型后点击「+ 新建会话」');
     return;
   }
@@ -592,7 +614,7 @@ function startNewSession() {
   streamBlocks = {};
   totalCost = 0;
   currentSessionId = null;
-  costDisplay.style.display = 'none';
+  renderCost();
 
   sendAction('new_session', {
     model: modelSelect.value,
@@ -708,7 +730,8 @@ function renderSessionList(sessions) {
     const isActive = s.session_id === currentSessionId;
     const title = s.title || '新会话';
     const time = formatTime(s.updated_at);
-    return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}">
+    const savedCost = Number(s.total_cost_usd || 0);
+    return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}">
       <div class="session-item-main">
         <div class="session-item-title">${esc(title)}</div>
         <div class="session-item-meta">${esc(s.model.replace('claude-',''))} · ${esc(time)}</div>
@@ -720,7 +743,7 @@ function renderSessionList(sessions) {
   el.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('session-item-delete')) return;
-      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model);
+      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model, Number(item.dataset.cost || 0));
     });
     item.querySelector('.session-item-delete').addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -734,7 +757,7 @@ function renderSessionList(sessions) {
   });
 }
 
-async function resumeSession(sessionId, cwd, model) {
+async function resumeSession(sessionId, cwd, model, savedCost = 0) {
   if (!clientId) {
     addSystemMsg('未连接到服务器', true);
     return;
@@ -746,16 +769,13 @@ async function resumeSession(sessionId, cwd, model) {
   currentContent = [];
   streamBlocks = {};
   currentSessionId = sessionId;
+  totalCost = Number.isFinite(savedCost) ? savedCost : 0;
+  renderCost();
 
   // 设置 UI
   if (cwd) cwdInput.value = cwd;
-  if (model) {
-    for (const opt of modelSelect.options) {
-      if (opt.value === model) {
-        modelSelect.value = model;
-        break;
-      }
-    }
+  if (model && hasModelOption(model)) {
+    modelSelect.value = model;
   }
 
   addSystemMsg('正在恢复会话...');
@@ -1047,6 +1067,19 @@ async function navigateFilePicker(path) {
   } catch (e) {
     filePickerList.innerHTML = `<div class="picker-empty">请求失败: ${esc(e.message)}</div>`;
   }
+}
+
+function hasModelOption(model) {
+  if (!model) return;
+  for (const opt of modelSelect.options) {
+    if (opt.value === model) return true;
+  }
+  return false;
+}
+
+function renderCost() {
+  costDisplay.style.display = totalCost > 0 ? 'block' : 'none';
+  costValue.textContent = totalCost.toFixed(4);
 }
 
 function formatModelName(model) {

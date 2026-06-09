@@ -30,6 +30,9 @@ def list_sessions() -> list[dict]:
     sessions = _load()
     changed = False
     for s in sessions:
+        if "total_cost_usd" not in s:
+            s["total_cost_usd"] = 0
+            changed = True
         last_user_msg = get_last_user_message(s.get("session_id", ""), s.get("cwd", ""))
         if last_user_msg and s.get("title") != last_user_msg[:50]:
             s["title"] = last_user_msg[:50]
@@ -51,6 +54,7 @@ def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
             s["title"] = title or s.get("title", "")
             s["model"] = model
             s["cwd"] = cwd
+            s["total_cost_usd"] = float(s.get("total_cost_usd") or 0)
             s["updated_at"] = now
             _save(sessions)
             return s
@@ -61,12 +65,31 @@ def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
         "title": title or "新会话",
         "model": model,
         "cwd": cwd,
+        "total_cost_usd": 0,
         "created_at": now,
         "updated_at": now,
     }
     sessions.insert(0, entry)
     _save(sessions)
     return entry
+
+
+def add_session_cost(session_id: str, cost_usd: float) -> float:
+    """累加会话费用并返回最新累计值。"""
+    if not session_id or cost_usd <= 0:
+        return 0
+
+    sessions = _load()
+    now = datetime.now().isoformat(timespec="seconds")
+    for s in sessions:
+        if s["session_id"] == session_id:
+            total = float(s.get("total_cost_usd") or 0) + float(cost_usd)
+            s["total_cost_usd"] = round(total, 8)
+            s["updated_at"] = now
+            _save(sessions)
+            return s["total_cost_usd"]
+
+    return 0
 
 
 def delete_session(session_id: str) -> bool:

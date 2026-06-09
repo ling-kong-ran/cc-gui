@@ -140,10 +140,14 @@ def get_available_models() -> list[str]:
     # 从环境变量中提取已配置的模型
     for key, value in env.items():
         if "MODEL" in key and value:
-            models.append(value)
+            models.append(str(value).strip())
 
     # 确保有默认模型
     if not models:
         models = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-6"]
 
-    return list(set(models))
+    unique_models = []
+    for model in models:
+        if model and model not in unique_models:
+            unique_models.append(model)
+    return unique_models
