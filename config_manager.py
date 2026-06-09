@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any
 
 CLAUDE_DIR = Path(os.environ.get("USERPROFILE", "~")) / ".claude"
+CCB_DIR = Path.home() / ".ccb"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
+GUI_SETTINGS_FILE = CCB_DIR / "gui_settings.json"
 SKILLS_DIR = CLAUDE_DIR / "skills"
 AGENTS_DIR = CLAUDE_DIR / "agents"
 
@@ -42,6 +44,32 @@ def update_env_config(env: dict[str, str]):
     settings = get_settings()
     settings["env"] = env
     save_settings(settings)
+
+
+def get_gui_settings() -> dict[str, Any]:
+    """读取 GUI 偏好设置（存储在用户目录 ~/.ccb 下）。"""
+    if GUI_SETTINGS_FILE.exists():
+        try:
+            return json.loads(GUI_SETTINGS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def save_gui_settings(data: dict[str, Any]):
+    """保存 GUI 偏好设置到用户目录 ~/.ccb/gui_settings.json。"""
+    GUI_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    GUI_SETTINGS_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def update_gui_settings(data: dict[str, Any]) -> dict[str, Any]:
+    """合并更新 GUI 偏好设置。"""
+    settings = get_gui_settings()
+    settings.update(data)
+    save_gui_settings(settings)
+    return settings
 
 
 def list_skills() -> list[dict[str, str]]:

@@ -28,6 +28,14 @@ def _save(sessions: list[dict]):
 def list_sessions() -> list[dict]:
     """返回所有历史会话，按 updated_at 倒序"""
     sessions = _load()
+    changed = False
+    for s in sessions:
+        last_user_msg = get_last_user_message(s.get("session_id", ""), s.get("cwd", ""))
+        if last_user_msg and s.get("title") != last_user_msg[:50]:
+            s["title"] = last_user_msg[:50]
+            changed = True
+    if changed:
+        _save(sessions)
     sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
     return sessions
 
@@ -85,10 +93,55 @@ def _sanitize_cwd(cwd: str) -> str:
     return re.sub(r'[^a-zA-Z0-9]', '-', cwd)
 
 
+def _jsonl_path(session_id: str, cwd: str) -> Path:
+    sanitized = _sanitize_cwd(cwd)
+    return Path.home() / ".claude" / "projects" / sanitized / f"{session_id}.jsonl"
+
+
+def _extract_user_text(obj: dict) -> str:
+    content = obj.get("message", {}).get("content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        for block in content:
+            if block.get("type") == "text":
+                return (block.get("text", "") or "").strip()
+    return ""
+
+
+def get_last_user_message(session_id: str, cwd: str) -> str:
+    """读取会话文件中的最后一条用户消息。"""
+    if not session_id or not cwd:
+        return ""
+
+    jsonl_path = _jsonl_path(session_id, cwd)
+    if not jsonl_path.exists():
+        return ""
+
+    last_text = ""
+    try:
+        with jsonl_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type", "") == "user":
+                    text = _extract_user_text(obj)
+                    if text:
+                        last_text = text
+    except OSError:
+        return ""
+
+    return last_text
+
+
 def load_session_history(session_id: str, cwd: str, max_messages: int = 50) -> list[dict]:
     """从 ccb 的 .jsonl 文件中加载历史消息"""
-    sanitized = _sanitize_cwd(cwd)
-    jsonl_path = Path.home() / ".claude" / "projects" / sanitized / f"{session_id}.jsonl"
+    jsonl_path = _jsonl_path(session_id, cwd)
 
     if not jsonl_path.exists():
         return []
@@ -108,15 +161,7 @@ def load_session_history(session_id: str, cwd: str, max_messages: int = 50) -> l
                 msg_type = obj.get("type", "")
 
                 if msg_type == "user":
-                    content = obj.get("message", {}).get("content", "")
-                    text = ""
-                    if isinstance(content, str):
-                        text = content
-                    elif isinstance(content, list):
-                        for block in content:
-                            if block.get("type") == "text":
-                                text = block.get("text", "")
-                                break
+                    text = _extract_user_text(obj)
                     if text:
                         messages.append({"role": "user", "text": text})
 

@@ -56,15 +56,42 @@ function initTheme() {
     const nextTheme = document.documentElement.classList.contains('light-theme') ? 'dark' : 'light';
     applyTheme(nextTheme);
   });
+  loadThemePreference();
 }
 
-function applyTheme(theme) {
+function applyTheme(theme, persist = true) {
   const isLight = theme === 'light';
   document.documentElement.classList.toggle('light-theme', isLight);
+  const themeValue = isLight ? 'light' : 'dark';
+  document.cookie = `ccb-theme=${encodeURIComponent(themeValue)}; Max-Age=31536000; Path=/; SameSite=Lax`;
   try {
-    localStorage.setItem('ccb-theme', isLight ? 'light' : 'dark');
+    localStorage.setItem('ccb-theme', themeValue);
   } catch (e) { /* ignore */ }
   updateThemeToggle();
+  if (persist) saveThemePreference(themeValue);
+}
+
+async function loadThemePreference() {
+  try {
+    const resp = await fetch('/api/gui-settings');
+    const data = await resp.json();
+    if (data.theme === 'light' || data.theme === 'dark') {
+      applyTheme(data.theme, false);
+      return;
+    }
+    const currentTheme = document.documentElement.classList.contains('light-theme') ? 'light' : 'dark';
+    saveThemePreference(currentTheme);
+  } catch (e) { /* ignore */ }
+}
+
+async function saveThemePreference(theme) {
+  try {
+    await fetch('/api/gui-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme }),
+    });
+  } catch (e) { /* ignore */ }
 }
 
 function updateThemeToggle() {

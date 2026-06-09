@@ -20,6 +20,8 @@ from config_manager import (
     save_settings,
     get_env_config,
     update_env_config,
+    get_gui_settings,
+    update_gui_settings,
     list_skills,
     list_agents,
     get_available_models,
@@ -35,8 +37,11 @@ session_manager = SessionManager()
 # SSE 客户端连接池: client_id -> asyncio.Queue
 sse_clients: dict[str, asyncio.Queue] = {}
 
-# 每个 client 的首条用户消息（用于会话标题）
-client_first_msg: dict[str, str] = {}
+# 每个 client 的最后一条用户消息（用于会话标题）
+client_last_msg: dict[str, str] = {}
+
+# 每个 client 关联的 ccb session id
+client_session_ids: dict[str, str] = {}
 
 # 每个 client 的会话参数（model, cwd）
 client_meta: dict[str, dict] = {}
@@ -486,14 +491,16 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
         # 记录元数据
         client_meta[client_id] = {"model": model, "cwd": cwd}
-        client_first_msg.pop(client_id, None)
+        client_last_msg.pop(client_id, None)
+        client_session_ids.pop(client_id, None)
 
         async def on_event(event: dict):
             evt_type = event.get("type", "unknown")
             # 拦截 session_id_captured 事件，保存到 store
             if evt_type == "session_id_captured":
                 sid = event.get("session_id", "")
-                title = client_first_msg.get(client_id, "新会话")
+                client_session_ids[client_id] = sid
+                title = client_last_msg.get(client_id, "新会话")
                 meta = client_meta.get(client_id, {})
                 save_session(sid, title, meta.get("model", model), meta.get("cwd", cwd or ""))
                 await push_event(client_id, "session_id_captured", event)
@@ -521,11 +528,13 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         session_manager.sessions[client_id] = session
 
         client_meta[client_id] = {"model": model, "cwd": cwd}
+        client_session_ids[client_id] = resume_id
 
         async def on_event_resume(event: dict):
             evt_type = event.get("type", "unknown")
             if evt_type == "session_id_captured":
                 sid = event.get("session_id", "")
+                client_session_ids[client_id] = sid
                 meta = client_meta.get(client_id, {})
                 save_session(sid, "", meta.get("model", model), meta.get("cwd", cwd or ""))
                 await push_event(client_id, "session_id_captured", event)
@@ -541,9 +550,13 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         content = data.get("content", "")
         session = session_manager.get_session(client_id)
         if session and session.is_running and content:
-            # 记录首条消息作为标题
-            if client_id not in client_first_msg:
-                client_first_msg[client_id] = content[:50]
+            # 使用最新用户消息作为会话标题
+            title = content.strip()[:50]
+            client_last_msg[client_id] = title
+            sid = client_session_ids.get(client_id)
+            if sid:
+                meta = client_meta.get(client_id, {})
+                save_session(sid, title, meta.get("model", ""), meta.get("cwd", ""))
             await session.send_message(content)
             await send_response(writer, 200, "application/json", b'{"ok":true}')
         else:
@@ -565,6 +578,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 async def handle_api_get(path: str, writer: asyncio.StreamWriter, query: dict = None):
     if path == "/api/settings":
         data = get_settings()
+    elif path == "/api/gui-settings":
+        data = get_gui_settings()
     elif path == "/api/env":
         data = get_env_config()
     elif path == "/api/skills":
@@ -621,6 +636,11 @@ async def handle_api_post(path: str, body: bytes, writer: asyncio.StreamWriter):
 
     if path == "/api/settings":
         save_settings(data)
+    elif path == "/api/gui-settings":
+        result = update_gui_settings(data)
+        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
     elif path == "/api/env":
         update_env_config(data)
     elif path == "/api/browse":

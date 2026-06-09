@@ -6,7 +6,11 @@
   <title>CCB 图形界面</title>
   <script>
     try {
-      if (localStorage.getItem('ccb-theme') === 'light') {
+      var themeCookie = document.cookie.split('; ').find(function (row) {
+        return row.indexOf('ccb-theme=') === 0;
+      });
+      var theme = themeCookie ? decodeURIComponent(themeCookie.split('=')[1]) : localStorage.getItem('ccb-theme');
+      if (theme === 'light') {
         document.documentElement.classList.add('light-theme');
       }
     } catch (e) {}
