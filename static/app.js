@@ -326,6 +326,14 @@ function initSSE() {
     loadSessions();
   });
 
+  eventSource.addEventListener('model_changed', (e) => {
+    const data = JSON.parse(e.data);
+    const modelLabel = getDisplayModelName(data.model || '');
+    const topbarModel = document.getElementById('topbar-model');
+    if (topbarModel && modelLabel) topbarModel.textContent = modelLabel;
+    if (modelLabel) addSystemMsg(t('modelChanged', { model: modelLabel }));
+  });
+
   eventSource.addEventListener('result', (e) => {
     handleResult(JSON.parse(e.data));
   });
@@ -879,7 +887,7 @@ function sendMessage() {
   if (isSlashCommand(originalContent)) {
     addSystemMsg(t('commandRunning', { command: getSlashCommandName(originalContent) }));
   }
-  sendAction('send_message', { content });
+  sendAction('send_message', { content, model: modelSelect.value });
   inputEl.value = '';
   inputEl.style.height = 'auto';
 }
@@ -943,7 +951,7 @@ function updateUI() {
   btnBrowse.style.opacity = sessionActive ? '0.4' : '1';
   const cliSelect = document.getElementById('cli-select');
   if (cliSelect) cliSelect.disabled = sessionActive;
-  if (modelSelect) modelSelect.disabled = sessionActive;
+  if (modelSelect) modelSelect.disabled = false;
   const skipPermissions = document.getElementById('skip-permissions');
   if (skipPermissions) skipPermissions.disabled = sessionActive;
 }

@@ -55,6 +55,7 @@
   "commandRunning": "正在执行 {command}...",
   "commandCompleted": "{command} 已执行完成",
   "commandEnded": "{command} 已结束，但未返回成功结果",
+  "modelChanged": "模型已切换为 {model}",
   "initStatus": "{model} · {tools} 个工具 · {skills} 个技能",
   "interrupted": "已中断当前回复，可继续补充",
   "unknownError": "未知错误",

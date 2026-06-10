@@ -55,6 +55,7 @@
   "commandRunning": "Running {command}...",
   "commandCompleted": "{command} completed",
   "commandEnded": "{command} ended without a success result",
+  "modelChanged": "Model switched to {model}",
   "initStatus": "{model} · {tools} tools · {skills} skills",
   "interrupted": "Interrupted current response. You can continue with more context.",
   "unknownError": "Unknown error",

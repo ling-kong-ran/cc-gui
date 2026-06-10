@@ -575,7 +575,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_cost(client_id, event))
-            elif evt_type in ("assistant", "system", "error", "process_ended"):
+            elif evt_type in ("assistant", "system", "error", "process_ended", "model_changed"):
                 # ccb 高层事件直接按类型推送，前端有对应 listener
                 await push_event(client_id, evt_type, event)
             # 其他事件（hook_started 等）忽略
@@ -611,7 +611,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_cost(client_id, event))
-            elif evt_type in ("assistant", "system", "error", "process_ended"):
+            elif evt_type in ("assistant", "system", "error", "process_ended", "model_changed"):
                 await push_event(client_id, evt_type, event)
             # 其他事件忽略
 
@@ -621,8 +621,14 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
     elif action == "send_message":
         content = data.get("content", "")
+        requested_model = data.get("model") or ""
         session = session_manager.get_session(client_id)
         if session and session.is_running and content:
+            if requested_model and requested_model != session.model:
+                session.model = requested_model
+                meta = client_meta.setdefault(client_id, {})
+                meta["model"] = requested_model
+                await push_event(client_id, "model_changed", {"model": requested_model})
             # 使用最新用户消息作为会话标题
             title = content.strip()[:50]
             client_last_msg[client_id] = title
