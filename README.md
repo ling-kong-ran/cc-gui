@@ -46,10 +46,10 @@ start.bat
 python server.py
 ```
 
-服务启动后会打印本机访问地址，例如：
+服务默认从 `17878` 端口启动；如果该端口被占用，会自动递增尝试下一个端口。启动后会打印本机访问地址，例如：
 
 ```text
-[CCB GUI] Server running at http://127.0.0.1:55076
+[CCB GUI] Server running at http://127.0.0.1:17878
 ```
 
 打开浏览器访问该地址即可。

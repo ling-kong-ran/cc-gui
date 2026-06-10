@@ -10,7 +10,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo [CCB GUI] Starting server (random port)...
+echo [CCB GUI] Starting server (port 17878, increment if occupied)...
 echo [CCB GUI] Press Ctrl+C to stop
 echo.
 python -u server.py

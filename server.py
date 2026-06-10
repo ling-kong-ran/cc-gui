@@ -31,6 +31,7 @@ from session_store import list_sessions, save_session, add_session_cost, delete_
 STATIC_DIR = Path(__file__).parent / "static"
 DEFAULT_CWD = str(Path(__file__).parent.resolve())  # 项目根目录作为默认 CWD
 HOST = "127.0.0.1"
+DEFAULT_PORT = 17878
 
 session_manager = SessionManager()
 
@@ -821,18 +822,22 @@ async def send_response(writer: asyncio.StreamWriter, status: int, content_type:
     await writer.drain()
 
 
-# ─── 主入口 ────────────────────────────────────────────────
-def find_free_port() -> int:
-    """找一个系统未占用的端口"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 async def main():
-    port = find_free_port()
-    server = await asyncio.start_server(handle_http, HOST, port)
+    server = None
+    last_error = None
+    for port in range(DEFAULT_PORT, 65536):
+        try:
+            server = await asyncio.start_server(handle_http, HOST, port)
+            break
+        except OSError as exc:
+            last_error = exc
+
+    if server is None:
+        raise RuntimeError(f"Unable to bind port {DEFAULT_PORT}-65535: {last_error}")
+
     url = f"http://{HOST}:{port}"
+    if port != DEFAULT_PORT:
+        print(f"[CCB GUI] Port {DEFAULT_PORT} is unavailable, using {port}")
     print(f"[CCB GUI] Server running at {url}")
     print(f"[CCB GUI] Press Ctrl+C to stop")
 
