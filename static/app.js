@@ -530,6 +530,7 @@ function initInput() {
   btnSend.addEventListener('click', sendMessage);
   btnStop.addEventListener('click', () => sendAction('interrupt'));
   btnNewSession.addEventListener('click', startNewSession);
+  document.getElementById('welcome-new-session')?.addEventListener('click', startNewSession);
   modelSelect.addEventListener('change', loadSlashCommands);
   cwdInput.addEventListener('change', loadSlashCommands);
   cwdInput.addEventListener('change', () => {
@@ -788,6 +789,9 @@ function updateUI() {
   btnBrowse.style.opacity = sessionActive ? '0.4' : '1';
   const cliSelect = document.getElementById('cli-select');
   if (cliSelect) cliSelect.disabled = sessionActive;
+  if (modelSelect) modelSelect.disabled = sessionActive;
+  const skipPermissions = document.getElementById('skip-permissions');
+  if (skipPermissions) skipPermissions.disabled = sessionActive;
 }
 
 function scrollToBottom() {

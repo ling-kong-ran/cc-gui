@@ -203,6 +203,70 @@ html, body {
 /* ─── Sidebar Section ───────────────────────────────────────── */
 .sidebar-section { padding: 10px 12px 0; }
 
+.compact-runtime-section {
+  padding-top: 8px;
+}
+
+.runtime-panel {
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-xs);
+  background: rgba(255,255,255,0.015);
+}
+
+.runtime-summary {
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  color: var(--text-base);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  list-style: none;
+}
+
+.runtime-summary::-webkit-details-marker {
+  display: none;
+}
+
+.runtime-summary::before {
+  content: '▸';
+  color: var(--green);
+}
+
+.runtime-panel[open] .runtime-summary::before {
+  content: '▾';
+}
+
+.runtime-summary span:first-child {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.runtime-summary-value {
+  color: var(--text-ghost);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.runtime-panel-body {
+  display: grid;
+  gap: 7px;
+  padding: 2px 9px 10px;
+}
+
+.runtime-panel-body .field-label {
+  margin: 4px 0 -2px;
+  padding-left: 0;
+  font-size: 10px;
+}
+
+.runtime-toggle {
+  margin-top: 4px;
+}
+
 .field-label {
   display: block;
   font-family: var(--font-mono);
@@ -678,6 +742,73 @@ html.light-theme .theme-icon-sun { display: none; }
   padding: 6px 14px;
   border: 1px solid var(--border-dim);
   border-radius: var(--radius-xs);
+}
+
+.welcome-guide {
+  display: grid;
+  gap: 11px;
+  justify-items: center;
+  width: min(520px, 100%);
+  margin-top: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-surface) 86%, transparent);
+  box-shadow: 0 16px 42px rgba(0,0,0,0.22);
+}
+
+.welcome-guide-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: 0.08em;
+}
+
+.welcome-guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-base);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.welcome-guide-steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.welcome-guide-steps span:not(:last-child)::after {
+  content: '>';
+  color: var(--green);
+  opacity: 0.8;
+}
+
+.welcome-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid var(--green-dim);
+  border-radius: var(--radius-xs);
+  background: var(--green-faint);
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.welcome-action:hover {
+  background: rgba(0,255,150,0.13);
+  border-color: var(--green);
+  transform: translateY(-1px);
 }
 
 /* ─── Message ───────────────────────────────────────────────── */

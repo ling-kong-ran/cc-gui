@@ -45,29 +45,31 @@
         </button>
       </div>
 
-      <!-- CLI 选择 -->
-      <div class="sidebar-section">
-        <label class="field-label">命令行工具</label>
-        <select id="cli-select" class="select"></select>
-      </div>
+      <!-- 运行设置 -->
+      <div class="sidebar-section compact-runtime-section">
+        <details class="runtime-panel">
+          <summary class="runtime-summary">
+            <span>运行设置</span>
+            <span class="runtime-summary-value">模型 / CLI / 权限</span>
+          </summary>
+          <div class="runtime-panel-body">
+            <label class="field-label" for="cli-select">命令行工具</label>
+            <select id="cli-select" class="select"></select>
 
-      <!-- 模型选择 -->
-      <div class="sidebar-section">
-        <label class="field-label">模型</label>
-        <select id="model-select" class="select">
-          <option value="">加载中...</option>
-        </select>
-      </div>
+            <label class="field-label" for="model-select">模型</label>
+            <select id="model-select" class="select">
+              <option value="">加载中...</option>
+            </select>
 
-      <!-- 权限模式 -->
-      <div class="sidebar-section">
-        <label class="toggle-label">
-          <span class="toggle-track">
-            <input type="checkbox" id="skip-permissions" checked>
-            <span class="toggle-indicator"></span>
-          </span>
-          <span class="toggle-text">跳过权限确认</span>
-        </label>
+            <label class="toggle-label runtime-toggle">
+              <span class="toggle-track">
+                <input type="checkbox" id="skip-permissions" checked>
+                <span class="toggle-indicator"></span>
+              </span>
+              <span class="toggle-text">跳过权限确认</span>
+            </label>
+          </div>
+        </details>
       </div>
 
       <!-- 主题切换 -->
@@ -141,7 +143,17 @@
  ╚██████╗╚██████╗██████╔╝
   ╚═════╝ ╚═════╝╚═════╝</pre>
             <p class="welcome-sub">Claude Code 桥接工具</p>
-            <p class="welcome-hint">选择模型 &gt; 设置工作目录 &gt; 新建会话</p>
+            <div class="welcome-guide">
+              <div class="welcome-guide-title">开始使用</div>
+              <div class="welcome-guide-steps">
+                <span>设置运行配置</span>
+                <span>选择工作目录</span>
+                <span>新建会话后输入消息</span>
+              </div>
+              <button type="button" id="welcome-new-session" class="welcome-action">
+                <span class="btn-prefix">&gt;</span> 新建会话
+              </button>
+            </div>
           </div>
         </div>
         <div class="input-area">
