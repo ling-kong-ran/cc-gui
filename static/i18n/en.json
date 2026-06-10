@@ -110,9 +110,16 @@
   "notifyWhenUnfocused": "Notify when work completes while unfocused",
   "notifyPermissionDenied": "Notification permission is not enabled. Allow notifications in your browser settings.",
   "notifyUnsupported": "This browser does not support system notifications",
-  "notifyTurnTitle": "CCB GUI",
-  "notifyTurnBody": "{project} finished responding",
-  "notifySubagentTitle": "Subagent completed",
-  "notifySubagentBody": "{agent} · {task}",
-  "notifyFallbackBody": "{project} task ended"
+  "notifyTurnTitle": "{model} response complete",
+  "notifyTurnBody": "Response finished",
+  "notifySubagentTitle": "{agent} completed",
+  "notifySubagentBody": "Task finished",
+  "notifyFallbackBody": "{project} task ended",
+  "notifyPromptLine": "Prompt: {prompt}",
+  "notifyTaskLine": "Task: {task}",
+  "notifyDurationSeconds": "{seconds}s elapsed",
+  "notifyDurationMinutes": "{minutes}m elapsed",
+  "notifyDurationMinutesSeconds": "{minutes}m {seconds}s elapsed",
+  "notifyCost": "Cost ${cost}",
+  "notifyAttachmentPrompt": "Sent {count} attachments"
 }

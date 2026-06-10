@@ -17,6 +17,8 @@ const sessionGroupOpenState = new Map();
 let connectionOnline = false;
 let currentTurnContent = '';
 let currentTurnHasAssistantOutput = false;
+let currentTurnStartedAt = 0;
+let currentTurnAttachmentCount = 0;
 let lastFocusConfigReloadAt = 0;
 
 // ─── DOM ─────────────────────────────────────────────────────
@@ -156,16 +158,25 @@ function notifyComplete(kind, detail = {}) {
   lastNotifyAt = now;
 
   const project = getProjectName(cwdInput.value.trim()) || t('appSubtitleShort');
-  let title = t('notifyTurnTitle');
-  let body = t('notifyTurnBody', { project });
+  const model = detail.model || getDisplayModelName(modelSelect.value) || '';
+  const duration = formatDuration(detail.durationMs || 0);
+  const cost = formatUsd(detail.costUsd || 0);
+  const prompt = summarizePrompt(detail.prompt || currentTurnContent || '');
+  const meta = [model, duration, cost].filter(Boolean).join(' · ');
+
+  let title = t('notifyTurnTitle', { project, model: model || t('model') });
+  let body = [
+    prompt ? t('notifyPromptLine', { prompt }) : t('notifyTurnBody', { project }),
+    meta,
+  ].filter(Boolean).join('\n');
+
   if (kind === 'subagent') {
-    title = t('notifySubagentTitle');
-    body = t('notifySubagentBody', {
-      agent: detail.agent || t('subagent'),
-      task: detail.task || project,
-    });
+    const agent = detail.agent || t('subagent');
+    const task = summarizePrompt(detail.task || '');
+    title = t('notifySubagentTitle', { agent });
+    body = [task ? t('notifyTaskLine', { task }) : t('notifySubagentBody', { agent, task: project }), meta].filter(Boolean).join('\n');
   } else if (kind === 'process') {
-    body = t('notifyFallbackBody', { project });
+    body = [t('notifyFallbackBody', { project }), meta].filter(Boolean).join('\n');
   }
 
   try {
@@ -176,6 +187,27 @@ function notifyComplete(kind, detail = {}) {
     };
     setTimeout(() => notification.close(), 8000);
   } catch (e) { /* ignore */ }
+}
+
+function summarizePrompt(text, maxLen = 90) {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  return clean.length > maxLen ? `${clean.slice(0, maxLen - 1)}…` : clean;
+}
+
+function formatDuration(ms) {
+  const seconds = Math.round(Number(ms || 0) / 1000);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  if (seconds < 60) return t('notifyDurationSeconds', { seconds });
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? t('notifyDurationMinutesSeconds', { minutes, seconds: rest }) : t('notifyDurationMinutes', { minutes });
+}
+
+function formatUsd(value) {
+  const cost = Number(value || 0);
+  if (!Number.isFinite(cost) || cost <= 0) return '';
+  return t('notifyCost', { cost: cost.toFixed(4) });
 }
 
 function getProjectName(cwd) {
@@ -586,11 +618,18 @@ function initSSE() {
     if (isResponding) {
       const finishedTurn = currentTurnContent;
       const hadAssistantOutput = currentTurnHasAssistantOutput;
+      const durationMs = Date.now() - currentTurnStartedAt;
       isResponding = false;
       currentTurnContent = '';
       currentTurnHasAssistantOutput = false;
+      currentTurnStartedAt = 0;
+      currentTurnAttachmentCount = 0;
       currentAssistantEl = null;
-      notifyComplete('process');
+      notifyComplete('process', {
+        prompt: finishedTurn,
+        durationMs,
+        model: getDisplayModelName(modelSelect.value),
+      });
       updateUI();
       if (isSlashCommand(finishedTurn) && !hadAssistantOutput) {
         const command = getSlashCommandName(finishedTurn);
@@ -889,6 +928,7 @@ function finishTasks(ids) {
     notifyComplete('subagent', {
       agent: completedTask?.type || t('subagent'),
       task: completedTask?.last || completedTask?.desc || '',
+      model: getDisplayModelName(modelSelect.value),
     });
     renderAgentStatus();
     if (currentAssistantEl) scheduleRender();
@@ -927,20 +967,27 @@ function renderAgentStatus() {
 function handleResult(data) {
   const finishedTurn = currentTurnContent;
   const hadAssistantOutput = currentTurnHasAssistantOutput;
+  const turnCost = Number(data.total_cost_usd || 0);
+  const persistedCost = Number(data.session_total_cost_usd || 0);
   isResponding = false;
   currentAssistantEl = null;
   currentContent = [];
   streamBlocks = {};
+  clearRunningTasks();
+  notifyComplete('turn', {
+    prompt: finishedTurn,
+    durationMs: Date.now() - currentTurnStartedAt,
+    costUsd: turnCost,
+    model: getDisplayModelName(data.model || modelSelect.value),
+  });
   currentTurnContent = '';
   currentTurnHasAssistantOutput = false;
-  clearRunningTasks();
-  notifyComplete('turn');
+  currentTurnStartedAt = 0;
+  currentTurnAttachmentCount = 0;
   cleanupUploadedFiles(uploadedFilesPendingCleanup);
   uploadedFilesPendingCleanup = [];
   updateUI();
 
-  const turnCost = Number(data.total_cost_usd || 0);
-  const persistedCost = Number(data.session_total_cost_usd || 0);
   if (Number.isFinite(persistedCost) && persistedCost > 0) {
     totalCost = persistedCost;
     renderCost();
@@ -1284,6 +1331,7 @@ function sendMessage() {
   let content = inputEl.value.trim();
   if ((!content && attachedFiles.length === 0) || !sessionActive || isResponding) return;
   const originalContent = content;
+  const attachmentCount = attachedFiles.length;
 
   // 注入文件路径。上传缓存文件只需要保留到本轮消息发出，之后异步删除以节省磁盘。
   let sentUploadedFiles = [];
@@ -1299,7 +1347,9 @@ function sendMessage() {
   }
 
   addUserMessage(content);
-  currentTurnContent = originalContent;
+  currentTurnContent = originalContent || (attachmentCount ? t('notifyAttachmentPrompt', { count: attachmentCount }) : '');
+  currentTurnAttachmentCount = attachmentCount;
+  currentTurnStartedAt = Date.now();
   currentTurnHasAssistantOutput = false;
   isResponding = true;
   updateUI();

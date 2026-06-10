@@ -110,9 +110,16 @@
   "notifyWhenUnfocused": "页面失焦时任务完成后通知",
   "notifyPermissionDenied": "通知权限未开启，请在浏览器权限设置中允许通知",
   "notifyUnsupported": "当前浏览器不支持系统通知",
-  "notifyTurnTitle": "CCB GUI",
-  "notifyTurnBody": "{project} 的回复已完成",
-  "notifySubagentTitle": "子代理已完成",
-  "notifySubagentBody": "{agent} · {task}",
-  "notifyFallbackBody": "{project} 的任务已结束"
+  "notifyTurnTitle": "{model} 回复完成",
+  "notifyTurnBody": "回复已完成",
+  "notifySubagentTitle": "{agent} 已完成",
+  "notifySubagentBody": "任务已完成",
+  "notifyFallbackBody": "{project} 的任务已结束",
+  "notifyPromptLine": "问题：{prompt}",
+  "notifyTaskLine": "任务：{task}",
+  "notifyDurationSeconds": "耗时 {seconds} 秒",
+  "notifyDurationMinutes": "耗时 {minutes} 分钟",
+  "notifyDurationMinutesSeconds": "耗时 {minutes} 分 {seconds} 秒",
+  "notifyCost": "费用 ${cost}",
+  "notifyAttachmentPrompt": "发送了 {count} 个附件"
 }
