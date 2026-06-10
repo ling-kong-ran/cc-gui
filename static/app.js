@@ -13,6 +13,7 @@ let currentContent = [];
 let streamBlocks = {};
 let totalCost = 0;
 let currentSessionId = null; // ccb 的 session UUID
+const sessionGroupOpenState = new Map();
 
 // ─── DOM ─────────────────────────────────────────────────────
 const messagesEl = document.getElementById('messages');
@@ -48,6 +49,7 @@ async function loadDefaultCwd() {
     if (data.cwd && !cwdInput.value.trim()) {
       cwdInput.value = data.cwd;
       scheduleSlashCommandReload();
+      loadSessions();
     }
   } catch (e) { /* ignore */ }
 }
@@ -213,6 +215,7 @@ function initSSE() {
   eventSource.addEventListener('session_id_captured', (e) => {
     const data = JSON.parse(e.data);
     currentSessionId = data.session_id;
+    openCurrentCwdSessionGroup();
     loadSessions();
   });
 
@@ -529,6 +532,10 @@ function initInput() {
   btnNewSession.addEventListener('click', startNewSession);
   modelSelect.addEventListener('change', loadSlashCommands);
   cwdInput.addEventListener('change', loadSlashCommands);
+  cwdInput.addEventListener('change', () => {
+    openCurrentCwdSessionGroup();
+    loadSessions();
+  });
   cwdInput.addEventListener('blur', loadSlashCommands);
 
   // 附件按钮 —— 打开自定义文件选择器
@@ -762,6 +769,7 @@ function startNewSession() {
   currentSessionId = null;
   renderCost();
 
+  openCurrentCwdSessionGroup();
   sendAction('new_session', {
     model: modelSelect.value,
     cwd: cwdInput.value.trim() || null,
@@ -872,19 +880,48 @@ function renderSessionList(sessions) {
     return;
   }
 
-  el.innerHTML = sessions.map(s => {
-    const isActive = s.session_id === currentSessionId;
-    const title = s.title || '新会话';
-    const time = formatTime(s.updated_at);
-    const savedCost = Number(s.total_cost_usd || 0);
-    return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}">
-      <div class="session-item-main">
-        <div class="session-item-title">${esc(title)}</div>
-        <div class="session-item-meta">${esc(s.model.replace('claude-',''))} · ${esc(time)}</div>
+  const groups = groupSessionsByCwd(sessions);
+
+  el.innerHTML = groups.map(group => {
+    const forcedOpen = group.sessions.some(s => s.session_id === currentSessionId);
+    const savedOpen = sessionGroupOpenState.get(group.key);
+    const defaultOpen = isCurrentCwd(group.cwd) || groups.length === 1;
+    const isOpen = forcedOpen || (savedOpen === undefined ? defaultOpen : savedOpen);
+    const latestTime = formatTime(group.latest);
+    const groupCost = group.sessions.reduce((sum, s) => sum + Number(s.total_cost_usd || 0), 0);
+    const sessionsHtml = group.sessions.map(s => renderSessionItem(s)).join('');
+
+    return `<div class="session-group${isOpen ? ' open' : ' collapsed'}" data-group-key="${esc(group.key)}">
+      <button type="button" class="session-group-header" aria-expanded="${isOpen ? 'true' : 'false'}">
+        <span class="session-group-chevron">${isOpen ? '▾' : '▸'}</span>
+        <span class="session-group-main">
+          <span class="session-group-title">${esc(group.name)}</span>
+          <span class="session-group-path">${esc(group.cwd || '未设置工作目录')}</span>
+        </span>
+        <span class="session-group-meta">${group.sessions.length} 个 · ${esc(latestTime)}${groupCost > 0 ? ` · $${groupCost.toFixed(4)}` : ''}</span>
+      </button>
+      <div class="session-group-body" ${isOpen ? '' : 'hidden'}>
+        ${sessionsHtml}
       </div>
-      <button class="session-item-delete" title="删除">&times;</button>
     </div>`;
   }).join('');
+
+  el.querySelectorAll('.session-group-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const groupEl = header.closest('.session-group');
+      const key = groupEl?.dataset.groupKey || '';
+      if (!key) return;
+      const body = groupEl.querySelector('.session-group-body');
+      const isOpen = !body.hasAttribute('hidden');
+      body.toggleAttribute('hidden', isOpen);
+      groupEl.classList.toggle('open', !isOpen);
+      groupEl.classList.toggle('collapsed', isOpen);
+      header.setAttribute('aria-expanded', String(!isOpen));
+      const chevron = header.querySelector('.session-group-chevron');
+      if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+      sessionGroupOpenState.set(key, !isOpen);
+    });
+  });
 
   el.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', (e) => {
@@ -901,6 +938,67 @@ function renderSessionList(sessions) {
       loadSessions();
     });
   });
+}
+
+function renderSessionItem(s) {
+  const isActive = s.session_id === currentSessionId;
+  const title = s.title || '新会话';
+  const time = formatTime(s.updated_at);
+  const savedCost = Number(s.total_cost_usd || 0);
+  return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}">
+    <div class="session-item-main">
+      <div class="session-item-title">${esc(title)}</div>
+      <div class="session-item-meta">${esc((s.model || '').replace('claude-',''))} · ${esc(time)}${savedCost > 0 ? ` · $${savedCost.toFixed(4)}` : ''}</div>
+    </div>
+    <button class="session-item-delete" title="删除">&times;</button>
+  </div>`;
+}
+
+function groupSessionsByCwd(sessions) {
+  const map = new Map();
+  for (const session of sessions) {
+    const cwd = (session.cwd || '').trim();
+    const key = normalizeCwdKey(cwd);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        cwd,
+        name: getProjectName(cwd),
+        latest: session.updated_at || '',
+        sessions: [],
+      });
+    }
+    const group = map.get(key);
+    group.sessions.push(session);
+    if ((session.updated_at || '') > (group.latest || '')) {
+      group.latest = session.updated_at || '';
+    }
+  }
+  return [...map.values()].sort((a, b) => (b.latest || '').localeCompare(a.latest || ''));
+}
+
+function normalizeCwdKey(cwd) {
+  const value = (cwd || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  return value ? value.toLowerCase() : '__no_cwd__';
+}
+
+function isCurrentCwd(cwd) {
+  const current = cwdInput.value.trim();
+  if (!current || !cwd) return false;
+  return normalizeCwdKey(current) === normalizeCwdKey(cwd);
+}
+
+function openCurrentCwdSessionGroup() {
+  const current = cwdInput.value.trim();
+  if (!current) return;
+  sessionGroupOpenState.set(normalizeCwdKey(current), true);
+}
+
+function getProjectName(cwd) {
+  if (!cwd) return '未设置工作目录';
+  const normalized = cwd.replace(/[\\\/]+$/, '');
+  const parts = normalized.split(/[\\\/]+/).filter(Boolean);
+  return parts[parts.length - 1] || normalized || '未设置工作目录';
 }
 
 async function resumeSession(sessionId, cwd, model, savedCost = 0) {
@@ -920,6 +1018,7 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0) {
 
   // 设置 UI
   if (cwd) cwdInput.value = cwd;
+  openCurrentCwdSessionGroup();
   if (model && hasModelOption(model)) {
     modelSelect.value = model;
   }
@@ -1066,6 +1165,9 @@ pickerUp.addEventListener('click', () => {
 });
 pickerSelect.addEventListener('click', () => {
   cwdInput.value = pickerCurrentDir;
+  openCurrentCwdSessionGroup();
+  loadSessions();
+  loadSlashCommands();
   closePicker();
 });
 
