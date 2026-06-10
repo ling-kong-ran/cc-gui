@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 STORE_PATH = Path.home() / ".claude" / "gui_sessions.json"
+PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
 def _load() -> list[dict]:
@@ -26,10 +27,10 @@ def _save(sessions: list[dict]):
 
 
 def list_sessions() -> list[dict]:
-    """返回所有历史会话，按 updated_at 倒序"""
-    sessions = _load()
+    """返回本机所有历史会话，按底层 jsonl 修改时间倒序。"""
+    indexed_sessions = _load()
     changed = False
-    for s in sessions:
+    for s in indexed_sessions:
         if "total_cost_usd" not in s:
             s["total_cost_usd"] = 0
             changed = True
@@ -38,9 +39,113 @@ def list_sessions() -> list[dict]:
             s["title"] = last_user_msg[:50]
             changed = True
     if changed:
-        _save(sessions)
-    sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+        _save(indexed_sessions)
+
+    sessions_by_id = {
+        s.get("session_id"): dict(s)
+        for s in indexed_sessions
+        if s.get("session_id")
+    }
+
+    for discovered in discover_local_sessions():
+        sid = discovered.get("session_id")
+        if not sid:
+            continue
+        existing = sessions_by_id.get(sid, {})
+        merged = dict(discovered)
+        if existing:
+            merged["title"] = discovered.get("title") or existing.get("title", "")
+            merged["model"] = discovered.get("model") or existing.get("model", "")
+            merged["cwd"] = discovered.get("cwd") or existing.get("cwd", "")
+            merged["total_cost_usd"] = float(existing.get("total_cost_usd") or 0)
+            merged["created_at"] = existing.get("created_at") or discovered.get("created_at", "")
+            merged["source"] = existing.get("source") or "gui"
+        sessions_by_id[sid] = merged
+
+    sessions = list(sessions_by_id.values())
+    sessions.sort(key=lambda s: s.get("mtime", 0), reverse=True)
     return sessions
+
+
+def discover_local_sessions() -> list[dict]:
+    """扫描 ~/.claude/projects 下的顶层会话 jsonl。"""
+    if not PROJECTS_DIR.exists():
+        return []
+
+    sessions = []
+    try:
+        project_dirs = [p for p in PROJECTS_DIR.iterdir() if p.is_dir()]
+    except OSError:
+        return []
+
+    for project_dir in project_dirs:
+        try:
+            jsonl_files = [p for p in project_dir.iterdir() if p.is_file() and p.suffix == ".jsonl"]
+        except OSError:
+            continue
+        for jsonl_path in jsonl_files:
+            entry = parse_session_jsonl(jsonl_path)
+            if entry:
+                sessions.append(entry)
+    return sessions
+
+
+def parse_session_jsonl(jsonl_path: Path) -> dict | None:
+    session_id = jsonl_path.stem
+    cwd = ""
+    model = ""
+    title = ""
+    last_prompt = ""
+    first_ts = ""
+    last_ts = ""
+
+    try:
+        stat = jsonl_path.stat()
+        mtime = stat.st_mtime
+        updated_at = datetime.fromtimestamp(mtime).isoformat(timespec="seconds")
+        with jsonl_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                session_id = obj.get("sessionId") or obj.get("session_id") or session_id
+                if obj.get("cwd"):
+                    cwd = obj.get("cwd", "")
+                timestamp = obj.get("timestamp")
+                if timestamp:
+                    if not first_ts:
+                        first_ts = timestamp
+                    last_ts = timestamp
+                msg = obj.get("message", {})
+                if isinstance(msg, dict) and msg.get("model"):
+                    model = msg.get("model", "")
+                if obj.get("type") == "user":
+                    text = _extract_user_text(obj)
+                    if text:
+                        title = text[:50]
+                elif obj.get("type") == "last-prompt":
+                    prompt = _clean_user_text(obj.get("lastPrompt", ""))
+                    if prompt:
+                        last_prompt = prompt[:50]
+    except OSError:
+        return None
+
+    return {
+        "session_id": session_id,
+        "title": last_prompt or title or "新会话",
+        "model": model,
+        "cwd": cwd,
+        "total_cost_usd": 0,
+        "created_at": first_ts or updated_at,
+        "updated_at": updated_at,
+        "mtime": mtime,
+        "source": "local",
+    }
 
 
 def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
@@ -124,12 +229,24 @@ def _jsonl_path(session_id: str, cwd: str) -> Path:
 def _extract_user_text(obj: dict) -> str:
     content = obj.get("message", {}).get("content", "")
     if isinstance(content, str):
-        return content.strip()
+        return _clean_user_text(content)
     if isinstance(content, list):
         for block in content:
             if block.get("type") == "text":
-                return (block.get("text", "") or "").strip()
+                return _clean_user_text(block.get("text", "") or "")
     return ""
+
+
+def _clean_user_text(text: str) -> str:
+    text = (text or "").strip()
+    if (
+        text.startswith("<local-command-")
+        or text.startswith("<command-name>")
+        or text.startswith("This session is being continued from a previous conversation")
+        or text.startswith("Unknown skill:")
+    ):
+        return ""
+    return text
 
 
 def get_last_user_message(session_id: str, cwd: str) -> str:
@@ -142,6 +259,7 @@ def get_last_user_message(session_id: str, cwd: str) -> str:
         return ""
 
     last_text = ""
+    last_prompt = ""
     try:
         with jsonl_path.open("r", encoding="utf-8") as f:
             for line in f:
@@ -156,10 +274,14 @@ def get_last_user_message(session_id: str, cwd: str) -> str:
                     text = _extract_user_text(obj)
                     if text:
                         last_text = text
+                elif obj.get("type") == "last-prompt":
+                    prompt = _clean_user_text(obj.get("lastPrompt", ""))
+                    if prompt:
+                        last_prompt = prompt
     except OSError:
         return ""
 
-    return last_text
+    return last_prompt or last_text
 
 
 def load_session_history(session_id: str, cwd: str, max_messages: int = 50) -> list[dict]:

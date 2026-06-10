@@ -15,6 +15,8 @@ let totalCost = 0;
 let currentSessionId = null; // ccb 的 session UUID
 const sessionGroupOpenState = new Map();
 let connectionOnline = false;
+let currentTurnContent = '';
+let currentTurnHasAssistantOutput = false;
 
 // ─── DOM ─────────────────────────────────────────────────────
 const messagesEl = document.getElementById('messages');
@@ -285,8 +287,9 @@ function initSSE() {
     sessionActive = true;
     updateUI();
     const topbarModel = document.getElementById('topbar-model');
-    if (topbarModel) topbarModel.textContent = formatModelName(data.model || '');
-    addSystemMsg(t('sessionStarted', { model: formatModelName(data.model || '') }));
+    const modelLabel = getDisplayModelName(data.model || '');
+    if (topbarModel) topbarModel.textContent = modelLabel || t('noSession');
+    addSystemMsg(modelLabel ? t('sessionStarted', { model: modelLabel }) : t('sessionStartedPlain'));
   });
 
   eventSource.addEventListener('session_stopped', (e) => {
@@ -299,8 +302,9 @@ function initSSE() {
   eventSource.addEventListener('system', (e) => {
     const data = JSON.parse(e.data);
     if (data.subtype === 'init') {
+      const modelLabel = getDisplayModelName(data.model || '');
       addSystemMsg(t('initStatus', {
-        model: formatModelName(data.model || ''),
+        model: modelLabel || t('model'),
         tools: (data.tools || []).length,
         skills: (data.skills || []).length,
       }));
@@ -328,15 +332,30 @@ function initSSE() {
 
   eventSource.addEventListener('process_ended', (e) => {
     // ccb 进程结束 —— 确保前端退出 responding 状态
+    const data = JSON.parse(e.data || '{}');
     if (isResponding) {
+      const finishedTurn = currentTurnContent;
+      const hadAssistantOutput = currentTurnHasAssistantOutput;
       isResponding = false;
+      currentTurnContent = '';
+      currentTurnHasAssistantOutput = false;
       currentAssistantEl = null;
       updateUI();
+      if (isSlashCommand(finishedTurn) && !hadAssistantOutput) {
+        const command = getSlashCommandName(finishedTurn);
+        if (Number(data.exit_code || 0) === 0) {
+          addSystemMsg(t('commandCompleted', { command }));
+        } else {
+          addSystemMsg(t('commandEnded', { command }), true);
+        }
+      }
     }
   });
 
   eventSource.addEventListener('generation_interrupted', () => {
     isResponding = false;
+    currentTurnContent = '';
+    currentTurnHasAssistantOutput = false;
     currentAssistantEl = null;
     updateUI();
     addSystemMsg(t('interrupted'));
@@ -348,6 +367,8 @@ function initSSE() {
       addSystemMsg(data.message || t('unknownError'), true);
       // 收到错误事件也要退出 responding 状态
       isResponding = false;
+      currentTurnContent = '';
+      currentTurnHasAssistantOutput = false;
       currentAssistantEl = null;
       updateUI();
     }
@@ -396,6 +417,7 @@ function handleStreamEvent(data) {
   if (!evt) return;
 
   isResponding = true;
+  currentTurnHasAssistantOutput = true;
   updateUI();
 
   switch (evt.type) {
@@ -515,6 +537,7 @@ function renderBlock(block) {
 function handleAssistantFinal(data) {
   // ccb 的 assistant 事件带增量消息（partial messages）
   isResponding = true;
+  currentTurnHasAssistantOutput = true;
   updateUI();
 
   if (!currentAssistantEl) {
@@ -542,10 +565,14 @@ function handleAssistantFinal(data) {
 }
 
 function handleResult(data) {
+  const finishedTurn = currentTurnContent;
+  const hadAssistantOutput = currentTurnHasAssistantOutput;
   isResponding = false;
   currentAssistantEl = null;
   currentContent = [];
   streamBlocks = {};
+  currentTurnContent = '';
+  currentTurnHasAssistantOutput = false;
   updateUI();
 
   const turnCost = Number(data.total_cost_usd || 0);
@@ -560,6 +587,8 @@ function handleResult(data) {
 
   if (data.is_error && data.errors) {
     data.errors.forEach(e => addSystemMsg(e, true));
+  } else if (isSlashCommand(finishedTurn) && !hadAssistantOutput) {
+    addSystemMsg(t('commandCompleted', { command: getSlashCommandName(finishedTurn) }));
   }
 }
 
@@ -831,6 +860,7 @@ function renderAttachments() {
 function sendMessage() {
   let content = inputEl.value.trim();
   if ((!content && attachedFiles.length === 0) || !sessionActive || isResponding) return;
+  const originalContent = content;
 
   // 注入文件路径
   if (attachedFiles.length > 0) {
@@ -842,9 +872,25 @@ function sendMessage() {
   }
 
   addUserMessage(content);
+  currentTurnContent = originalContent;
+  currentTurnHasAssistantOutput = false;
+  isResponding = true;
+  updateUI();
+  if (isSlashCommand(originalContent)) {
+    addSystemMsg(t('commandRunning', { command: getSlashCommandName(originalContent) }));
+  }
   sendAction('send_message', { content });
   inputEl.value = '';
   inputEl.style.height = 'auto';
+}
+
+function isSlashCommand(content) {
+  return /^\/[^\s]+/.test((content || '').trim());
+}
+
+function getSlashCommandName(content) {
+  const match = (content || '').trim().match(/^\/[^\s]+/);
+  return match ? match[0] : '';
 }
 
 function startNewSession() {
@@ -1057,10 +1103,11 @@ function renderSessionItem(s) {
   const title = s.title || t('newChat');
   const time = formatTime(s.updated_at);
   const savedCost = Number(s.total_cost_usd || 0);
+  const modelLabel = getDisplayModelName(s.model || '', false);
   return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}">
     <div class="session-item-main">
       <div class="session-item-title">${esc(title)}</div>
-      <div class="session-item-meta">${esc((s.model || '').replace('claude-',''))} · ${esc(time)}${savedCost > 0 ? ` · $${savedCost.toFixed(4)}` : ''}</div>
+      <div class="session-item-meta">${modelLabel ? `${esc(modelLabel)} · ` : ''}${esc(time)}${savedCost > 0 ? ` · $${savedCost.toFixed(4)}` : ''}</div>
     </div>
     <button class="session-item-delete" title="${esc(t('delete'))}">&times;</button>
   </div>`;
@@ -1444,12 +1491,25 @@ function renderCost() {
 }
 
 function formatModelName(model) {
+  model = (model || '').trim();
+  if (!model) return '';
   const names = {
     'claude-opus-4-6': 'Opus 4.6',
     'claude-sonnet-4-6': 'Sonnet 4.6',
     'claude-haiku-4-6': 'Haiku 4.6',
   };
   return names[model] || model.replace(/^claude-/, '');
+}
+
+function isDisplayableModel(model) {
+  const value = (model || '').trim();
+  return Boolean(value && !/^<[^>]+>$/.test(value));
+}
+
+function getDisplayModelName(model, allowSelectedFallback = true) {
+  if (isDisplayableModel(model)) return formatModelName(model);
+  const selected = allowSelectedFallback ? modelSelect?.value : '';
+  return isDisplayableModel(selected) ? formatModelName(selected) : '';
 }
 
 function handleFilePickerSearchInput() {
