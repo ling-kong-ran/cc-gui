@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNotifications();
   await loadThemePreference();
   initNavigation();
+  initMobileLayout();
   initSSE();
   initInput();
   initCliInstallModal();
@@ -534,6 +535,65 @@ function initNavigation() {
       document.getElementById(`page-${btn.dataset.page}`).classList.add('active');
     });
   });
+}
+
+function initMobileLayout() {
+  const toggles = document.querySelectorAll('.mobile-menu-toggle');
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  const mobileQuery = window.matchMedia('(max-width: 760px)');
+
+  if (!toggles.length || !sidebar || !backdrop) return;
+
+  const setExpanded = (expanded) => {
+    toggles.forEach(toggle => toggle.setAttribute('aria-expanded', String(expanded)));
+  };
+
+  const closeMenu = () => {
+    sidebar.classList.remove('mobile-open');
+    backdrop.classList.remove('visible');
+    setExpanded(false);
+  };
+
+  const openMenu = () => {
+    sidebar.classList.add('mobile-open');
+    backdrop.classList.add('visible');
+    setExpanded(true);
+  };
+
+  toggles.forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      if (sidebar.classList.contains('mobile-open')) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+  });
+
+  backdrop.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+
+  sidebar.addEventListener('click', (e) => {
+    if (!mobileQuery.matches) return;
+    if (e.target.closest('.nav-btn, .session-item, #btn-new-session')) closeMenu();
+  });
+
+  document.getElementById('welcome-new-session')?.addEventListener('click', () => {
+    if (mobileQuery.matches) closeMenu();
+  });
+
+  const handleQueryChange = (e) => {
+    if (!e.matches) closeMenu();
+  };
+
+  if (mobileQuery.addEventListener) {
+    mobileQuery.addEventListener('change', handleQueryChange);
+  } else {
+    mobileQuery.addListener(handleQueryChange);
+  }
 }
 
 // ─── SSE 连接 ────────────────────────────────────────────────

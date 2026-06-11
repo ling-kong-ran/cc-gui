@@ -24,6 +24,8 @@
   <div class="scanlines" aria-hidden="true"></div>
   <div class="crt-vignette" aria-hidden="true"></div>
 
+  <div id="mobile-sidebar-backdrop" class="mobile-sidebar-backdrop" aria-hidden="true"></div>
+
   <div class="app">
     <!-- 侧边栏 -->
     <aside class="sidebar">
@@ -131,6 +133,9 @@
       <!-- 对话页 -->
       <div id="page-chat" class="page active">
         <div class="chat-topbar">
+          <button class="mobile-menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
           <span class="topbar-label" data-i18n="chat">Chat</span>
           <span id="topbar-model" class="topbar-model" data-i18n="noSession">No Session</span>
         </div>
@@ -179,6 +184,9 @@
       <!-- 配置页 -->
       <div id="page-config" class="page config-page">
         <div class="chat-topbar">
+          <button class="mobile-menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
           <span class="topbar-label" data-i18n="settings">Settings</span>
         </div>
         <div class="config-inner">

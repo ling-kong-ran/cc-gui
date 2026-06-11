@@ -30,8 +30,34 @@ from session_store import list_sessions, save_session, add_session_cost, delete_
 
 STATIC_DIR = Path(__file__).parent / "static"
 DEFAULT_CWD = str(Path(__file__).parent.resolve())  # 项目根目录作为默认 CWD
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"  # 监听所有网卡，允许局域网设备访问
+BROWSER_HOST = "127.0.0.1"
 DEFAULT_PORT = 17878
+
+
+def get_lan_ips() -> list[str]:
+    """获取本机局域网 IPv4 地址，用于提示手机访问地址。"""
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        for item in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = item[4][0]
+            if ip.startswith("127.") or ip in ips:
+                continue
+            ips.append(ip)
+    except OSError:
+        pass
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+            if not ip.startswith("127.") and ip not in ips:
+                ips.insert(0, ip)
+    except OSError:
+        pass
+
+    return ips
 
 session_manager = SessionManager()
 
@@ -948,15 +974,20 @@ async def main():
     if server is None:
         raise RuntimeError(f"Unable to bind port {DEFAULT_PORT}-65535: {last_error}")
 
-    url = f"http://{HOST}:{port}"
+    local_url = f"http://{BROWSER_HOST}:{port}"
+    lan_urls = [f"http://{ip}:{port}" for ip in get_lan_ips()]
     if port != DEFAULT_PORT:
         print(f"[CCB GUI] Port {DEFAULT_PORT} is unavailable, using {port}")
-    print(f"[CCB GUI] Server running at {url}")
+    print(f"[CCB GUI] Server running at {local_url}")
+    for lan_url in lan_urls:
+        print(f"[CCB GUI] LAN access: {lan_url}")
+    if not lan_urls:
+        print("[CCB GUI] LAN access: no LAN IPv4 address detected")
     print(f"[CCB GUI] Press Ctrl+C to stop")
 
     # 自动打开浏览器
     import webbrowser
-    webbrowser.open(url)
+    webbrowser.open(local_url)
 
     async with server:
         await server.serve_forever()
