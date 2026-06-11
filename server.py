@@ -10,6 +10,8 @@ import sys
 import socket
 import uuid
 import ipaddress
+import base64
+import shlex
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -455,6 +457,82 @@ def browse_directory(path: str) -> dict:
         "current": path.replace("\\", "/"),
         "parent": parent.replace("\\", "/") if parent != "/" else "/",
         "items": items,
+    }
+
+
+def remote_upload_dir(cwd: str = "") -> Path:
+    base = Path(cwd) if cwd and os.path.isdir(cwd) else UPLOAD_DIR_FALLBACK.parent
+    upload_dir = base / ".gui-uploads" / "remote"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+def shell_quote(value: str) -> str:
+    return shlex.quote(str(value or ""))
+
+
+def remote_ls(target_id: str, path: str) -> dict:
+    target = remote_manager.get_target(target_id or "")
+    if not target:
+        return {"ok": False, "error": "target_not_found"}
+    remote_path = path or "."
+    script = (
+        "import json, os, sys\n"
+        "p = sys.argv[1]\n"
+        "try:\n"
+        "    p = os.path.abspath(os.path.expanduser(p))\n"
+        "    items = []\n"
+        "    for name in sorted(os.listdir(p)):\n"
+        "        if name.startswith('.'):\n"
+        "            continue\n"
+        "        full = os.path.join(p, name)\n"
+        "        try:\n"
+        "            st = os.stat(full)\n"
+        "        except OSError:\n"
+        "            continue\n"
+        "        typ = 'dir' if os.path.isdir(full) else 'file'\n"
+        "        items.append({'name': name, 'path': full, 'type': typ, 'size': st.st_size})\n"
+        "    print(json.dumps({'ok': True, 'current': p, 'parent': os.path.dirname(p) or '/', 'items': items}, ensure_ascii=False))\n"
+        "except Exception as exc:\n"
+        "    print(json.dumps({'ok': False, 'error': str(exc)}, ensure_ascii=False))\n"
+    )
+    command = "python3 -c " + shell_quote(script) + " " + shell_quote(remote_path)
+    res = remote_manager.run_remote_command(target, command, timeout=30)
+    if not res.get("ok"):
+        return {"ok": False, "error": res.get("error") or res.get("stderr") or "remote_failed"}
+    try:
+        return json.loads((res.get("stdout") or "").strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        return {"ok": False, "error": "invalid_remote_response"}
+
+
+def remote_cache_file(target_id: str, path: str, cwd: str = "") -> dict:
+    target = remote_manager.get_target(target_id or "")
+    if not target:
+        return {"ok": False, "error": "target_not_found"}
+    remote_path = path or ""
+    if not remote_path:
+        return {"ok": False, "error": "missing_path"}
+    name = Path(remote_path).name or "remote-file"
+    local_name = f"{uuid.uuid4().hex[:8]}_{name}"
+    local_path = remote_upload_dir(cwd) / local_name
+    command = "base64 " + shell_quote(remote_path)
+    res = remote_manager.run_remote_command(target, command, timeout=120)
+    if not res.get("ok"):
+        return {"ok": False, "error": res.get("error") or res.get("stderr") or "remote_failed"}
+    try:
+        data = base64.b64decode((res.get("stdout") or "").encode("ascii"), validate=False)
+    except (ValueError, UnicodeEncodeError) as exc:
+        return {"ok": False, "error": f"decode_failed: {exc}"}
+    local_path.write_bytes(data)
+    return {
+        "ok": True,
+        "name": name,
+        "path": str(local_path.resolve()).replace("\\", "/"),
+        "source": "remote",
+        "original_path": remote_path,
+        "remote_target_name": target.get("name") or target.get("host") or target_id,
+        "size": len(data),
     }
 
 
@@ -953,6 +1031,7 @@ async def handle_api_get(path: str, writer: asyncio.StreamWriter, query: dict = 
     elif path == "/api/gui-settings":
         data = get_gui_settings()
         data.update(get_access_context(writer))
+        data["default_cwd"] = DEFAULT_CWD
     elif path == "/api/env":
         data = get_env_config()
     elif path == "/api/skills":
@@ -1041,6 +1120,16 @@ async def handle_api_post(path: str, body: bytes, writer: asyncio.StreamWriter):
         return
     elif path == "/api/search-files":
         result = search_files(data.get("path", ""), data.get("query", ""))
+        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
+    elif path == "/api/remote-files/list":
+        result = await asyncio.get_event_loop().run_in_executor(None, remote_ls, data.get("target_id", ""), data.get("path", ""))
+        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
+    elif path == "/api/remote-files/cache":
+        result = await asyncio.get_event_loop().run_in_executor(None, remote_cache_file, data.get("target_id", ""), data.get("path", ""), data.get("cwd", ""))
         resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
         await send_response(writer, 200, "application/json; charset=utf-8", resp)
         return

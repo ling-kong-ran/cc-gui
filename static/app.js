@@ -55,6 +55,7 @@ let i18nMap = {};
 let fontSizePercent = 100;
 let notificationsEnabled = false;
 let lastNotifyAt = 0;
+let accessContext = { isLocalhost: true, defaultCwd: '' };
 
 // ─── 初始化 ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -521,6 +522,7 @@ async function loadThemePreference() {
     applyFontSize(size, false);
     await applyLanguage(language, false);
     applyNotificationPreference(Boolean(data.notifications_enabled));
+    accessContext = { isLocalhost: Boolean(data.is_localhost), defaultCwd: data.default_cwd || '' };
     applyLanAccessPreference(data);
 
     if (data.language !== language || Number(data.font_size_percent) !== size) {
@@ -550,7 +552,7 @@ async function saveGuiSettings(settings) {
 
 function updateThemeToggle() {
   const isLight = document.documentElement.classList.contains('light-theme');
-  themeToggleText.textContent = isLight ? t('switchToDark') : t('switchToLight');
+  if (themeToggleText) themeToggleText.textContent = isLight ? t('switchToDark') : t('switchToLight');
   btnThemeToggle.setAttribute('aria-label', isLight ? t('switchToDarkTheme') : t('switchToLightTheme'));
   btnThemeToggle.title = isLight ? t('switchToDarkTheme') : t('switchToLightTheme');
 }
@@ -1431,6 +1433,7 @@ function initInput() {
   fileInput.addEventListener('change', () => {
     uploadFiles(fileInput.files);
     fileInput.value = '';
+    if (filePickerOverlay?.style.display === 'flex') closeFilePicker();
   });
   initInputFileDrop();
 
@@ -1684,7 +1687,7 @@ async function uploadFile(file) {
     if (data.files && data.files.length > 0) {
       for (const path of data.files) {
         const isImage = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(path);
-        attachedFiles.push({ name: file.name, path, isImage, uploaded: true });
+        attachedFiles.push({ name: file.name, path, isImage, uploaded: true, source: 'client', originalPath: file.name });
       }
       renderAttachments();
     }
@@ -1701,7 +1704,8 @@ function renderAttachments() {
   }
   attachmentsBar.style.display = 'flex';
   attachmentsBar.innerHTML = attachedFiles.map((f, i) => `
-    <div class="attachment-item">
+    <div class="attachment-item" title="${esc(getAttachmentTitle(f))}">
+      <span class="attachment-source">${esc(getAttachmentSourceLabel(f))}</span>
       ${f.isImage ? `<img src="/api/file?path=${encodeURIComponent(f.path)}" class="attachment-thumb">` : '<span class="attachment-icon">&#128196;</span>'}
       <span class="attachment-name">${esc(f.name)}</span>
       <button class="attachment-remove" data-idx="${i}">&times;</button>
@@ -1715,6 +1719,17 @@ function renderAttachments() {
       renderAttachments();
     });
   });
+}
+
+function getAttachmentSourceLabel(file) {
+  if (file.source === 'remote') return t('remote');
+  if (file.source === 'server') return accessContext.isLocalhost ? t('localFiles') : t('serverWorkspace');
+  return accessContext.isLocalhost ? t('localFiles') : t('thisDevice');
+}
+
+function getAttachmentTitle(file) {
+  if (file.source === 'remote') return `${file.remoteTargetName || t('remote')}:${file.originalPath || file.path}`;
+  return file.originalPath || file.path || file.name;
 }
 
 function sendMessage() {
@@ -2341,12 +2356,19 @@ const filePickerClose = document.getElementById('file-picker-close');
 const filePickerConfirm = document.getElementById('file-picker-confirm');
 const filePickerSelectedCount = document.getElementById('file-picker-selected-count');
 const filePickerSearch = document.getElementById('file-picker-search');
+const filePickerTabs = document.getElementById('file-picker-tabs');
+const filePickerLocal = document.getElementById('file-picker-local');
+const filePickerBrowser = document.getElementById('file-picker-browser');
+const filePickerClientChoose = document.getElementById('file-picker-client-choose');
+const filePickerServerBrowse = document.getElementById('file-picker-server-browse');
+const filePickerLocalHint = document.getElementById('file-picker-local-hint');
 
 let filePickerCurrentDir = '/';
-let filePickerSelected = new Map(); // path -> name
+let filePickerSelected = new Map(); // path -> { name, source, originalPath, remoteTargetName }
 let filePickerItems = [];
 let filePickerSearchTimer = null;
 let filePickerSearchSeq = 0;
+let filePickerMode = 'local';
 
 filePickerClose.addEventListener('click', closeFilePicker);
 filePickerOverlay.addEventListener('click', (e) => {
@@ -2357,14 +2379,53 @@ filePickerUp.addEventListener('click', () => {
 });
 filePickerConfirm.addEventListener('click', confirmFileSelection);
 filePickerSearch.addEventListener('input', handleFilePickerSearchInput);
+filePickerClientChoose?.addEventListener('click', () => fileInput.click());
+filePickerServerBrowse?.addEventListener('click', () => setFilePickerMode('server'));
+
+function getAttachmentSources() {
+  const hasRemote = Boolean(remoteTargetSelect?.value);
+  const sources = [];
+  if (accessContext.isLocalhost) {
+    sources.push({ id: 'local', label: t('localFiles') });
+  } else {
+    sources.push({ id: 'client', label: t('thisDevice') });
+    sources.push({ id: 'server', label: t('serverWorkspace') });
+  }
+  if (hasRemote) sources.push({ id: 'remote', label: t('remoteTarget') });
+  return sources;
+}
 
 function openFilePicker() {
   filePickerSelected.clear();
   filePickerSearch.value = '';
   updateFilePickerCount();
+  renderFilePickerTabs();
   filePickerOverlay.style.display = 'flex';
-  // 默认打开当前 CWD，没有就用根目录
-  navigateFilePicker(cwdInput.value.trim() || '/');
+  setFilePickerMode(accessContext.isLocalhost ? 'local' : 'client');
+}
+
+function renderFilePickerTabs() {
+  const sources = getAttachmentSources();
+  filePickerTabs.innerHTML = sources.map(source => `<button type="button" class="picker-tab" data-mode="${esc(source.id)}">${esc(source.label)}</button>`).join('');
+  filePickerTabs.querySelectorAll('.picker-tab').forEach(btn => {
+    btn.addEventListener('click', () => setFilePickerMode(btn.dataset.mode));
+  });
+}
+
+function setFilePickerMode(mode) {
+  filePickerMode = mode;
+  filePickerTabs.querySelectorAll('.picker-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+  const localMode = mode === 'client' || mode === 'local';
+  filePickerLocal.style.display = localMode ? '' : 'none';
+  filePickerBrowser.style.display = localMode ? 'none' : '';
+  filePickerConfirm.style.display = localMode ? 'none' : '';
+  if (localMode) {
+    filePickerLocalHint.textContent = mode === 'local' ? t('chooseLocalHint') : t('chooseClientHint');
+    filePickerServerBrowse.style.display = mode === 'local' ? '' : 'none';
+    return;
+  }
+  filePickerConfirm.style.display = '';
+  navigateFilePicker(mode === 'remote' ? '/' : (cwdInput.value.trim() || accessContext.defaultCwd || '/'));
 }
 
 function closeFilePicker() {
@@ -2385,10 +2446,10 @@ async function navigateFilePicker(path) {
   filePickerList.innerHTML = `<div class="picker-empty">${esc(t('pickerLoading'))}</div>`;
 
   try {
-    const resp = await fetch('/api/browse-files', {
+    const resp = await fetch(filePickerMode === 'remote' ? '/api/remote-files/list' : '/api/browse-files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(filePickerMode === 'remote' ? { target_id: remoteTargetSelect?.value || '', path } : { path }),
     });
     const data = await resp.json();
 
@@ -2531,6 +2592,11 @@ function handleFilePickerSearchInput() {
     return;
   }
 
+  if (filePickerMode === 'remote') {
+    renderFilePickerItems(filePickerItems);
+    return;
+  }
+
   filePickerSearchTimer = window.setTimeout(() => {
     searchFilePicker(keyword);
   }, 250);
@@ -2603,7 +2669,12 @@ function renderFilePickerItems(items, options = {}) {
       if (filePickerSelected.has(itemPath)) {
         filePickerSelected.delete(itemPath);
       } else {
-        filePickerSelected.set(itemPath, itemName);
+          filePickerSelected.set(itemPath, {
+            name: itemName,
+            source: filePickerMode === 'remote' ? 'remote' : 'server',
+            originalPath: itemPath,
+            remoteTargetName: getRemoteTargetName(),
+          });
       }
       updateFilePickerCount();
       renderFilePickerItems(filePickerSearch.value.trim() ? filteredItems : filePickerItems);
@@ -2624,14 +2695,44 @@ function getFileIcon(name) {
   return '&#128196;';
 }
 
-function confirmFileSelection() {
+async function confirmFileSelection() {
   if (filePickerSelected.size === 0) return;
 
-  for (const [filePath, fileName] of filePickerSelected) {
-    // 直接引用本地路径，不上传，不做缩略图（避免安全限制）
-    attachedFiles.push({ name: fileName, path: filePath, isImage: false, uploaded: false });
+  for (const [filePath, meta] of filePickerSelected) {
+    if (meta.source === 'remote') {
+      await cacheRemoteAttachment(filePath, meta);
+    } else {
+      attachedFiles.push({ name: meta.name, path: filePath, isImage: false, uploaded: false, source: 'server', originalPath: filePath });
+    }
   }
 
   renderAttachments();
   closeFilePicker();
+}
+
+async function cacheRemoteAttachment(filePath, meta) {
+  const resp = await fetch('/api/remote-files/cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_id: remoteTargetSelect?.value || '', path: filePath, cwd: cwdInput.value.trim() || '' }),
+  });
+  const data = await resp.json();
+  if (!data.ok) {
+    addSystemMsg(t('remoteFileCacheFailed', { message: data.error || 'failed' }), true);
+    return;
+  }
+  attachedFiles.push({
+    name: data.name || meta.name,
+    path: data.path,
+    isImage: false,
+    uploaded: true,
+    source: 'remote',
+    originalPath: data.original_path || filePath,
+    remoteTargetName: data.remote_target_name || meta.remoteTargetName,
+  });
+}
+
+function getRemoteTargetName() {
+  const opt = remoteTargetSelect?.selectedOptions?.[0];
+  return opt ? opt.textContent.trim() : '';
 }

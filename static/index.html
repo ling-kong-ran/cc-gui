@@ -30,11 +30,19 @@
     <!-- 侧边栏 -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <div class="logo-row">
-          <span class="logo-bracket">[</span>
-          <span class="logo-text">CCB</span>
-          <span class="logo-bracket">]</span>
-          <span class="logo-cursor">_</span>
+        <div class="sidebar-title-row">
+          <div class="logo-row">
+            <span class="logo-bracket">[</span>
+            <span class="logo-text">CCB</span>
+            <span class="logo-bracket">]</span>
+            <span class="logo-cursor">_</span>
+          </div>
+          <button id="btn-theme-toggle" class="theme-toggle" type="button" aria-label="切换为亮色主题" title="切换为亮色主题">
+            <span class="theme-toggle-icon" aria-hidden="true">
+              <svg class="theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.7 6.7 0 0 0 9.8 9.8z"></path></svg>
+              <svg class="theme-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+            </span>
+          </button>
         </div>
         <p class="logo-sub" data-i18n="appSubtitle">Claude Code Bridge v1.0</p>
         <div class="header-line"></div>
@@ -64,6 +72,14 @@
               <option value="" data-i18n="loading">Loading...</option>
             </select>
 
+            <label class="field-label" data-i18n="cwd">Working Directory</label>
+            <div class="cwd-wrapper">
+              <input id="cwd-input" type="text" class="input cwd-input" placeholder="C:\project-path" data-i18n-placeholder="cwdPlaceholder">
+              <button id="btn-browse" class="btn-browse" title="Browse Directory" data-i18n-title="browseDir">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              </button>
+            </div>
+
             <label class="toggle-label runtime-toggle">
               <span class="toggle-track">
                 <input type="checkbox" id="skip-permissions" checked>
@@ -85,28 +101,6 @@
             </label>
           </div>
         </details>
-      </div>
-
-      <!-- 主题切换 -->
-      <div class="sidebar-section">
-        <button id="btn-theme-toggle" class="theme-toggle" type="button" aria-label="切换为亮色主题" title="切换为亮色主题">
-          <span class="theme-toggle-icon" aria-hidden="true">
-            <svg class="theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.7 6.7 0 0 0 9.8 9.8z"></path></svg>
-            <svg class="theme-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
-          </span>
-          <span id="theme-toggle-text">Switch to Light</span>
-        </button>
-      </div>
-
-      <!-- 工作目录 -->
-      <div class="sidebar-section">
-        <label class="field-label" data-i18n="cwd">Working Directory</label>
-        <div class="cwd-wrapper">
-          <input id="cwd-input" type="text" class="input cwd-input" placeholder="C:\project-path" data-i18n-placeholder="cwdPlaceholder">
-          <button id="btn-browse" class="btn-browse" title="Browse Directory" data-i18n-title="browseDir">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-          </button>
-        </div>
       </div>
 
       <!-- 历史会话 -->
@@ -401,6 +395,15 @@
         <span class="picker-title" data-i18n="chooseAttachment">Choose Attachments</span>
         <button id="file-picker-close" class="picker-close" data-i18n="close">Close</button>
       </div>
+      <div id="file-picker-tabs" class="picker-tabs"></div>
+      <div id="file-picker-local" class="picker-local" style="display:none">
+        <p id="file-picker-local-hint" class="picker-local-hint" data-i18n="chooseClientHint">Choose files from this device.</p>
+        <div class="picker-local-actions">
+          <button id="file-picker-client-choose" class="btn btn-primary" type="button" style="width:auto; padding:8px 18px;"><span data-i18n="chooseFromDevice">Choose from device</span></button>
+          <button id="file-picker-server-browse" class="btn-save" type="button" style="display:none"><span data-i18n="browseWorkspace">Browse workspace</span></button>
+        </div>
+      </div>
+      <div id="file-picker-browser">
       <div class="picker-path">
         <button id="file-picker-up" class="picker-up" title="Parent Directory" data-i18n-title="parentDir">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -412,6 +415,7 @@
         <input id="file-picker-search" class="picker-search-input" type="search" placeholder="Search files or folders in this directory and subdirectories" data-i18n-placeholder="fileSearchPlaceholder">
       </div>
       <div id="file-picker-list" class="picker-list" style="max-height:340px;"></div>
+      </div>
       <div class="picker-footer" style="justify-content:space-between; align-items:center;">
         <span id="file-picker-selected-count" style="font-family:var(--font-mono);color:var(--text-muted);">Selected 0 files</span>
         <button id="file-picker-confirm" class="btn btn-primary" style="width:auto; padding:8px 24px;">
