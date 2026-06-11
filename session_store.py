@@ -177,7 +177,8 @@ def parse_session_jsonl(jsonl_path: Path) -> dict | None:
     }
 
 
-def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
+def save_session(session_id: str, title: str, model: str, cwd: str,
+                 remote_target_id: str = "") -> dict:
     """创建或更新会话记录"""
     sessions = _load()
     now = datetime.now().isoformat(timespec="seconds")
@@ -196,6 +197,8 @@ def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
             s["cwd"] = cwd
             s["total_cost_usd"] = float(s.get("total_cost_usd") or 0)
             s["updated_at"] = now
+            if remote_target_id:
+                s["remote_target_id"] = remote_target_id
             _save(sessions)
             return s
 
@@ -206,6 +209,7 @@ def save_session(session_id: str, title: str, model: str, cwd: str) -> dict:
         "model": model,
         "cwd": cwd,
         "total_cost_usd": 0,
+        "remote_target_id": remote_target_id,
         "created_at": now,
         "updated_at": now,
     }

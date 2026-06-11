@@ -780,7 +780,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         session_manager.sessions[client_id] = session
 
         # 记录元数据
-        client_meta[client_id] = {"model": model, "cwd": cwd}
+        remote_target_id = (remote_target or {}).get("id", "")
+        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id}
         client_last_msg.pop(client_id, None)
         client_session_ids.pop(client_id, None)
 
@@ -792,7 +793,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 client_session_ids[client_id] = sid
                 title = client_last_msg.get(client_id, "新会话")
                 meta = client_meta.get(client_id, {})
-                save_session(sid, title, meta.get("model", model), meta.get("cwd", cwd or ""))
+                save_session(sid, title, meta.get("model", model), meta.get("cwd", cwd or ""),
+                             remote_target_id=meta.get("remote_target_id", ""))
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_cost(client_id, event))
@@ -811,7 +813,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
         await session.start(model=model, cwd=cwd, on_event=on_event, skip_permissions=skip_perms,
                             remote_target=remote_target, allow_mutate=allow_mutate)
-        await push_event(client_id, "session_started", {"model": model})
+        await push_event(client_id, "session_started", {"model": model, "remote_target_id": remote_target_id})
         await send_response(writer, 200, "application/json", b'{"ok":true}')
 
     elif action == "resume_session":
@@ -821,6 +823,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         skip_perms = data.get("skip_permissions", True)
         remote_target = remote_manager.get_target(data.get("remote_target_id") or "")
         allow_mutate = bool(data.get("allow_remote_mutate", False))
+        remote_target_id = (remote_target or {}).get("id", "")
 
         # 清理旧 session
         old_session = session_manager.get_session(client_id)
@@ -830,7 +833,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         _, session = session_manager.create_session()
         session_manager.sessions[client_id] = session
 
-        client_meta[client_id] = {"model": model, "cwd": cwd}
+        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id}
         client_session_ids[client_id] = resume_id
 
         async def on_event_resume(event: dict):
@@ -839,7 +842,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 sid = event.get("session_id", "")
                 client_session_ids[client_id] = sid
                 meta = client_meta.get(client_id, {})
-                save_session(sid, "", meta.get("model", model), meta.get("cwd", cwd or ""))
+                save_session(sid, "", meta.get("model", model), meta.get("cwd", cwd or ""),
+                             remote_target_id=meta.get("remote_target_id", ""))
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_cost(client_id, event))
@@ -856,7 +860,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
         await session.start(model=model, cwd=cwd, resume_id=resume_id, on_event=on_event_resume, skip_permissions=skip_perms,
                             remote_target=remote_target, allow_mutate=allow_mutate)
-        await push_event(client_id, "session_started", {"model": model, "resumed": True, "session_id": resume_id})
+        await push_event(client_id, "session_started", {"model": model, "resumed": True, "session_id": resume_id, "remote_target_id": remote_target_id})
         await send_response(writer, 200, "application/json", b'{"ok":true}')
 
     elif action == "send_message":
@@ -878,7 +882,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
             sid = client_session_ids.get(client_id)
             if sid:
                 meta = client_meta.get(client_id, {})
-                save_session(sid, title, meta.get("model", ""), meta.get("cwd", ""))
+                save_session(sid, title, meta.get("model", ""), meta.get("cwd", ""),
+                             remote_target_id=meta.get("remote_target_id", ""))
             await session.send_message(content)
             await send_response(writer, 200, "application/json", b'{"ok":true}')
         else:

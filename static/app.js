@@ -859,6 +859,11 @@ function initSSE() {
     const topbarModel = document.getElementById('topbar-model');
     const modelLabel = getDisplayModelName(data.model || '');
     if (topbarModel) topbarModel.textContent = modelLabel || t('noSession');
+    // 恢复远程目标选择（刷新后 resume 时后端会回传 remote_target_id）
+    if (data.remote_target_id && remoteTargetSelect) {
+      remoteTargetSelect.value = data.remote_target_id;
+      updateRemoteAuthVisibility();
+    }
     addSystemMsg(modelLabel ? t('sessionStarted', { model: modelLabel }) : t('sessionStartedPlain'));
   });
 
@@ -1869,7 +1874,7 @@ function renderSessionList(sessions) {
   el.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('session-item-delete')) return;
-      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model, Number(item.dataset.cost || 0));
+      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model, Number(item.dataset.cost || 0), item.dataset.remoteTarget || '');
     });
     item.querySelector('.session-item-delete').addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -1891,7 +1896,7 @@ function renderSessionItem(s) {
   const time = formatTime(s.updated_at);
   const savedCost = Number(s.total_cost_usd || 0);
   const modelLabel = getDisplayModelName(s.model || '', false);
-  return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}">
+  return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}" data-remote-target="${esc(s.remote_target_id || '')}">
     <div class="session-item-main">
       <div class="session-item-title">${esc(title)}</div>
       <div class="session-item-meta">${modelLabel ? `${esc(modelLabel)} · ` : ''}${esc(time)}${savedCost > 0 ? ` · $${savedCost.toFixed(4)}` : ''}</div>
@@ -1947,7 +1952,7 @@ function getProjectName(cwd) {
   return parts[parts.length - 1] || normalized || t('unsetCwd');
 }
 
-async function resumeSession(sessionId, cwd, model, savedCost = 0) {
+async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetId = '') {
   if (!clientId) {
     addSystemMsg(t('notConnected'), true);
     return;
@@ -1967,6 +1972,11 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0) {
   openCurrentCwdSessionGroup();
   if (model && hasModelOption(model)) {
     modelSelect.value = model;
+  }
+  // 恢复远程目标选择
+  if (remoteTargetId && remoteTargetSelect) {
+    remoteTargetSelect.value = remoteTargetId;
+    updateRemoteAuthVisibility();
   }
 
   addSystemMsg(t('restoring'));
@@ -1991,7 +2001,7 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0) {
     model: model || modelSelect.value,
     cwd: cwd || cwdInput.value.trim() || null,
     skip_permissions: document.getElementById('skip-permissions').checked,
-    remote_target_id: remoteTargetSelect?.value || '',
+    remote_target_id: remoteTargetId || remoteTargetSelect?.value || '',
     allow_remote_mutate: !!remoteAllowMutate?.checked,
   });
 
