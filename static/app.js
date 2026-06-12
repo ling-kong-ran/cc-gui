@@ -42,6 +42,9 @@ const btnShortcuts = document.getElementById('btn-shortcuts');
 const shortcutsOverlay = document.getElementById('shortcuts-overlay');
 const shortcutsClose = document.getElementById('shortcuts-close');
 const btnExportChat = document.getElementById('btn-export-chat');
+const topbarSessionId = document.getElementById('topbar-session-id');
+const topbarModel = document.getElementById('topbar-model');
+const topbarCli = document.getElementById('topbar-cli');
 const themeToggleText = document.getElementById('theme-toggle-text');
 const languageSelect = document.getElementById('language-select');
 const fontSizeRange = document.getElementById('font-size-range');
@@ -639,6 +642,60 @@ function normalizeFontSize(value) {
   return Math.min(125, Math.max(85, Math.round(size / 5) * 5));
 }
 
+function formatTopbarSessionId(sessionId) {
+  if (!sessionId) return '-';
+  return sessionId.length > 13 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
+}
+
+function getSelectedCliLabel() {
+  const cliSelect = document.getElementById('cli-select');
+  const opt = cliSelect?.selectedOptions?.[0];
+  return opt?.textContent?.trim() || opt?.value || '-';
+}
+
+function quoteCommandArg(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  return /\s/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
+}
+
+function getResumeCommandText() {
+  if (!currentSessionId) return '';
+  const cliSelect = document.getElementById('cli-select');
+  const cli = cliSelect?.value || getSelectedCliLabel();
+  return `${quoteCommandArg(cli)} --resume ${quoteCommandArg(currentSessionId)}`;
+}
+
+async function copyResumeCommand() {
+  const text = getResumeCommandText();
+  if (!text) {
+    addSystemMsg(t('noSession'), true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    addSystemMsg(t('resumeCommandCopied'));
+  } catch (e) {
+    addSystemMsg(t('copyFailed'), true);
+  }
+}
+
+function renderTopbarMeta(modelOverride = '') {
+  const modelLabel = getDisplayModelName(modelOverride || modelSelect?.value || '') || t('noSession');
+  if (topbarSessionId) {
+    topbarSessionId.textContent = formatTopbarSessionId(currentSessionId);
+    const resumeCommand = getResumeCommandText();
+    topbarSessionId.title = resumeCommand || t('copyResumeCommand');
+    topbarSessionId.disabled = !currentSessionId;
+  }
+  if (topbarModel) topbarModel.textContent = modelLabel;
+  if (topbarCli) {
+    const cliLabel = getSelectedCliLabel();
+    topbarCli.textContent = cliLabel;
+    topbarCli.title = document.getElementById('cli-select')?.value || cliLabel;
+  }
+}
+
 async function loadClis() {
   const cliSelect = document.getElementById('cli-select');
   const guideBtn = document.getElementById('btn-cli-install-guide');
@@ -657,6 +714,7 @@ async function loadClis() {
         cliInstallPromptShown = true;
         openCliInstallModal();
       }
+      renderTopbarMeta();
       return;
     }
     if (guideBtn) guideBtn.style.display = 'none';
@@ -674,9 +732,11 @@ async function loadClis() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: cliSelect.value }),
       });
+      renderTopbarMeta();
       addSystemMsg(t('cliSwitched', { path: cliSelect.value }));
       loadSlashCommands();
     };
+    renderTopbarMeta();
   } catch (e) { /* ignore */ }
 }
 
@@ -892,9 +952,8 @@ function initSSE() {
     const data = JSON.parse(e.data);
     sessionActive = true;
     updateUI();
-    const topbarModel = document.getElementById('topbar-model');
     const modelLabel = getDisplayModelName(data.model || '');
-    if (topbarModel) topbarModel.textContent = modelLabel || t('noSession');
+    renderTopbarMeta(data.model || '');
     // 恢复远程目标选择（刷新后 resume 时后端会回传 remote_target_id）
     if (data.remote_target_id && remoteTargetSelect) {
       remoteTargetSelect.value = data.remote_target_id;
@@ -933,6 +992,7 @@ function initSSE() {
   eventSource.addEventListener('session_id_captured', (e) => {
     const data = JSON.parse(e.data);
     currentSessionId = data.session_id;
+    renderTopbarMeta();
     openCurrentCwdSessionGroup();
     loadSessions();
   });
@@ -940,8 +1000,7 @@ function initSSE() {
   eventSource.addEventListener('model_changed', (e) => {
     const data = JSON.parse(e.data);
     const modelLabel = getDisplayModelName(data.model || '');
-    const topbarModel = document.getElementById('topbar-model');
-    if (topbarModel && modelLabel) topbarModel.textContent = modelLabel;
+    renderTopbarMeta(data.model || '');
     if (modelLabel) addSystemMsg(t('modelChanged', { model: modelLabel }));
   });
 
@@ -1437,10 +1496,14 @@ function initInput() {
   btnStop.addEventListener('click', () => sendAction('interrupt'));
   btnNewSession.addEventListener('click', startNewSession);
   btnExportChat?.addEventListener('click', copyConversationMarkdown);
+  topbarSessionId?.addEventListener('click', copyResumeCommand);
   sessionSearchInput?.addEventListener('input', () => renderSessionList(cachedSessions));
   document.addEventListener('keydown', handleGlobalShortcuts);
   document.getElementById('welcome-new-session')?.addEventListener('click', startNewSession);
-  modelSelect.addEventListener('change', loadSlashCommands);
+  modelSelect.addEventListener('change', () => {
+    renderTopbarMeta();
+    loadSlashCommands();
+  });
   cwdInput.addEventListener('change', loadSlashCommands);
   cwdInput.addEventListener('change', () => {
     openCurrentCwdSessionGroup();
@@ -1827,6 +1890,7 @@ function startNewSession() {
     totalCost = 0;
     totalTokens = emptyTokenUsage();
     currentSessionId = null;
+    renderTopbarMeta();
     renderCost();
     renderTokens();
     addSystemMsg(t('stoppedEditable'));
@@ -1839,6 +1903,7 @@ function startNewSession() {
   streamBlocks = {};
   totalCost = 0;
   currentSessionId = null;
+  renderTopbarMeta();
   renderCost();
 
   openCurrentCwdSessionGroup();
@@ -2128,6 +2193,7 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetI
   currentSessionId = sessionId;
   totalCost = Number.isFinite(savedCost) ? savedCost : 0;
   totalTokens = normalizeTokenUsage(savedTokens);
+  renderTopbarMeta(model || modelSelect.value);
   renderCost();
   renderTokens();
 
@@ -2136,6 +2202,7 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetI
   openCurrentCwdSessionGroup();
   if (model && hasModelOption(model)) {
     modelSelect.value = model;
+    renderTopbarMeta(model);
   }
   // 恢复远程目标选择
   if (remoteTargetSelect) {

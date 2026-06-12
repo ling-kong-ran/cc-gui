@@ -157,7 +157,11 @@
             <span></span><span></span><span></span>
           </button>
           <span class="topbar-label" data-i18n="chat">Chat</span>
-          <span id="topbar-model" class="topbar-model" data-i18n="noSession">No Session</span>
+          <div class="topbar-meta" aria-live="polite">
+            <span class="topbar-meta-item"><span class="topbar-meta-key" data-i18n="sessionId">Session</span><button id="topbar-session-id" class="topbar-meta-value topbar-session-copy" type="button" title="Copy resume command" data-i18n-title="copyResumeCommand">-</button></span>
+            <span class="topbar-meta-item"><span class="topbar-meta-key" data-i18n="model">Model</span><span id="topbar-model" class="topbar-meta-value" data-i18n="noSession">No Session</span></span>
+            <span class="topbar-meta-item"><span class="topbar-meta-key" data-i18n="cliTool">CLI</span><span id="topbar-cli" class="topbar-meta-value">-</span></span>
+          </div>
           <button id="btn-export-chat" class="topbar-action" type="button" title="Copy as Markdown" data-i18n-title="copyMarkdown">MD</button>
         </div>
         <div id="messages" class="messages">

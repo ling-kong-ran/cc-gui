@@ -733,13 +733,64 @@ html.light-theme .select {
   letter-spacing: 0.1em;
 }
 
-.topbar-model {
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.topbar-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-ghost);
+  white-space: nowrap;
+}
+
+.topbar-meta-key::after {
+  content: ':';
+}
+
+.topbar-meta-value {
   color: var(--green-dim);
-  letter-spacing: 0.06em;
-  opacity: 0.85;
-  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.topbar-session-copy {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.topbar-session-copy:not(:disabled):hover {
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.topbar-session-copy:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+#topbar-session-id {
+  max-width: 96px;
+}
+
+#topbar-cli {
+  max-width: 90px;
 }
 
 .topbar-action {
@@ -1753,7 +1804,7 @@ html.light-theme .select {
 .cost-label,
 .cost-value,
 .topbar-label,
-.topbar-model,
+.topbar-meta,
 .welcome-sub,
 .welcome-guide-title,
 .welcome-guide-steps,
@@ -1791,7 +1842,7 @@ html.light-theme .select {
 .runtime-summary-value, .session-group-path, .session-group-meta, .empty-state { --base-font-size: 9.5px; }
 .toggle-text, .input, .select, .session-item-title, .env-key, .env-val, .skill-name, .agent-name, .welcome-guide-title, .slash-command-name { --base-font-size: 12px; }
 .session-item-meta, .skill-desc, .agent-desc { --base-font-size: 10.5px; }
-.topbar-label, .topbar-model, .welcome-sub, .picker-empty, .slash-command-desc, .slash-command-empty { --base-font-size: 11px; }
+.topbar-label, .topbar-meta, .welcome-sub, .picker-empty, .slash-command-desc, .slash-command-empty { --base-font-size: 11px; }
 #file-picker-selected-count { --base-font-size: 11px; }
 .picker-title, .picker-close { --base-font-size: 12px; }
 .welcome-guide-steps { --base-font-size: 11px; }
@@ -2174,11 +2225,22 @@ html.light-theme .agent-status-bar {
     gap: 8px;
   }
 
-  .topbar-model {
+  .topbar-meta {
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    gap: 6px;
+  }
+
+  .topbar-meta-item {
+    min-width: 0;
+  }
+
+  .topbar-meta-value {
+    max-width: 82px;
+  }
+
+  #topbar-cli {
+    max-width: 54px;
   }
 
   .messages {
