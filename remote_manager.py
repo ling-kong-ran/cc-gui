@@ -267,6 +267,17 @@ def _find_ssh_client() -> Optional[str]:
     if _SSH_BIN != "ssh":
         return _SSH_BIN if shutil.which(_SSH_BIN) else None
 
+    # 项目目录及同级目录中的 ssh.exe（便于内网离线分发）
+    project_dir = Path(__file__).resolve().parent
+    for candidate in (
+        project_dir / "ssh.exe",
+        project_dir / "ssh" / "ssh.exe",
+        project_dir.parent / "ssh.exe",
+        project_dir.parent / "ssh" / "ssh.exe",
+    ):
+        if candidate.exists():
+            return str(candidate)
+
     # 标准 PATH 搜索
     found = shutil.which("ssh")
     if found:
@@ -274,25 +285,15 @@ def _find_ssh_client() -> Optional[str]:
 
     # Windows 特殊处理：检查常见安装位置
     if os.name == "nt":
+        sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         common_paths = [
+            Path(sys_root) / "System32" / "OpenSSH" / "ssh.exe",
             Path(os.environ.get("ProgramFiles", "")) / "OpenSSH" / "ssh.exe",
             Path(os.environ.get("ProgramFiles(x86)", "")) / "OpenSSH" / "ssh.exe",
-            Path(os.environ.get("USERPROFILE", "")) / ".ssh" / "ssh.exe",
-            Path("C:\\Program Files\\OpenSSH\\ssh.exe"),
-            Path("C:\\Program Files (x86)\\OpenSSH\\ssh.exe"),
         ]
         for p in common_paths:
             if p.exists():
                 return str(p)
-
-        # 检查 WSL 中的 ssh（如果 wsl.exe 可用）
-        try:
-            result = subprocess.run(["wsl", "which", "ssh"],
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and result.stdout.strip():
-                return "wsl"  # 标记为可通过 WSL 使用
-        except (OSError, subprocess.TimeoutExpired):
-            pass
 
     return None
 
