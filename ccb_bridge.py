@@ -226,6 +226,7 @@ class CCBSession:
         self.skip_permissions: bool = True  # 默认跳过权限
         self.remote_target: Optional[dict] = None  # 绑定的远程目标
         self.allow_mutate: bool = False  # 是否允许读写模式（变更类工具）
+        self.cli: Optional[str] = None  # 本会话使用的 CLI，None 时回退到全局当前 CLI
         self._proc: Optional[asyncio.subprocess.Process] = None
         self._on_event: Optional[Callable[[dict], Any]] = None
         self._read_task: Optional[asyncio.Task] = None
@@ -240,6 +241,7 @@ class CCBSession:
         skip_permissions: bool = True,
         remote_target: Optional[dict] = None,
         allow_mutate: bool = False,
+        cli: Optional[str] = None,
     ):
         """初始化会话参数"""
         self.model = model
@@ -249,6 +251,7 @@ class CCBSession:
         self.skip_permissions = skip_permissions
         self.remote_target = remote_target or None
         self.allow_mutate = bool(allow_mutate)
+        self.cli = cli or None
         self.is_running = True
 
     def _build_remote_mcp(self) -> tuple[Optional[str], Optional[str]]:
@@ -306,7 +309,7 @@ class CCBSession:
         await self._kill_proc()
 
         cmd = [
-            get_current_cli(),
+            self.cli or get_current_cli(),
             "-p",
             "--output-format", "stream-json",
             "--verbose",

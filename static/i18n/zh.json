@@ -160,7 +160,7 @@
   "notifyAttachmentPrompt": "发送了 {count} 个附件",
   "confirmDeleteSession": "确定删除会话「{title}」吗？将永久删除该会话的本地记录文件，无法恢复。",
   "remote": "远程",
-  "remoteTarget": "远程目标",
+  "remoteTarget": "目标机器",
   "remoteTargetNone": "本机（不使用远程）",
   "allowRemoteFix": "允许远程写入",
   "remoteDiag": "远程连接",

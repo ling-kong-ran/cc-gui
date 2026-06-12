@@ -902,6 +902,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         skip_perms = data.get("skip_permissions", True)
         remote_target = remote_manager.get_target(data.get("remote_target_id") or "")
         allow_mutate = bool(data.get("allow_remote_mutate", False))
+        cli = data.get("cli") or get_current_cli()
 
         # 清理旧 session
         old_session = session_manager.get_session(client_id)
@@ -912,7 +913,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
         # 记录元数据
         remote_target_id = (remote_target or {}).get("id", "")
-        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id}
+        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id, "cli": cli}
         client_last_msg.pop(client_id, None)
         client_session_ids.pop(client_id, None)
 
@@ -925,7 +926,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 title = client_last_msg.get(client_id, "新会话")
                 meta = client_meta.get(client_id, {})
                 save_session(sid, title, meta.get("model", model), meta.get("cwd", cwd or ""),
-                             remote_target_id=meta.get("remote_target_id", ""))
+                             remote_target_id=meta.get("remote_target_id", ""), cli=meta.get("cli", ""))
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_usage(client_id, event))
@@ -943,8 +944,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
             # 其他事件（hook_started 等）忽略
 
         await session.start(model=model, cwd=cwd, on_event=on_event, skip_permissions=skip_perms,
-                            remote_target=remote_target, allow_mutate=allow_mutate)
-        await push_event(client_id, "session_started", {"model": model, "remote_target_id": remote_target_id})
+                            remote_target=remote_target, allow_mutate=allow_mutate, cli=cli)
+        await push_event(client_id, "session_started", {"model": model, "remote_target_id": remote_target_id, "cli": cli})
         await send_response(writer, 200, "application/json", b'{"ok":true}')
 
     elif action == "resume_session":
@@ -955,6 +956,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
         remote_target = remote_manager.get_target(data.get("remote_target_id") or "")
         allow_mutate = bool(data.get("allow_remote_mutate", False))
         remote_target_id = (remote_target or {}).get("id", "")
+        cli = data.get("cli") or get_current_cli()
 
         # 清理旧 session
         old_session = session_manager.get_session(client_id)
@@ -963,7 +965,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
 
         _, session = session_manager.create_session(client_id)
 
-        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id}
+        client_meta[client_id] = {"model": model, "cwd": cwd, "remote_target_id": remote_target_id, "cli": cli}
         client_session_ids[client_id] = resume_id
 
         async def on_event_resume(event: dict):
@@ -973,7 +975,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 client_session_ids[client_id] = sid
                 meta = client_meta.get(client_id, {})
                 save_session(sid, "", meta.get("model", model), meta.get("cwd", cwd or ""),
-                             remote_target_id=meta.get("remote_target_id", ""))
+                             remote_target_id=meta.get("remote_target_id", ""), cli=meta.get("cli", ""))
                 await push_event(client_id, "session_id_captured", event)
             elif evt_type == "result":
                 await push_event(client_id, evt_type, persist_result_usage(client_id, event))
@@ -989,8 +991,8 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
             # 其他事件忽略
 
         await session.start(model=model, cwd=cwd, resume_id=resume_id, on_event=on_event_resume, skip_permissions=skip_perms,
-                            remote_target=remote_target, allow_mutate=allow_mutate)
-        await push_event(client_id, "session_started", {"model": model, "resumed": True, "session_id": resume_id, "remote_target_id": remote_target_id})
+                            remote_target=remote_target, allow_mutate=allow_mutate, cli=cli)
+        await push_event(client_id, "session_started", {"model": model, "resumed": True, "session_id": resume_id, "remote_target_id": remote_target_id, "cli": cli})
         await send_response(writer, 200, "application/json", b'{"ok":true}')
 
     elif action == "send_message":
@@ -1011,6 +1013,11 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
                 meta["remote_target_id"] = (remote_target or {}).get("id", "")
             if "allow_remote_mutate" in data:
                 session.allow_mutate = bool(data.get("allow_remote_mutate"))
+            # 允许会话中切换 CLI，下一条消息生效
+            if data.get("cli"):
+                session.cli = data.get("cli")
+                meta = client_meta.setdefault(client_id, {})
+                meta["cli"] = data.get("cli")
             # 使用最新用户消息作为会话标题
             title = content.strip()[:50]
             client_last_msg[client_id] = title
@@ -1018,7 +1025,7 @@ async def handle_action(body: bytes, writer: asyncio.StreamWriter):
             if sid:
                 meta = client_meta.get(client_id, {})
                 save_session(sid, title, meta.get("model", ""), meta.get("cwd", ""),
-                             remote_target_id=meta.get("remote_target_id", ""))
+                             remote_target_id=meta.get("remote_target_id", ""), cli=meta.get("cli", ""))
             await session.send_message(content)
             await send_response(writer, 200, "application/json", b'{"ok":true}')
         else:
@@ -1224,6 +1231,8 @@ async def handle_api_post(path: str, body: bytes, writer: asyncio.StreamWriter):
         cli_path = data.get("path", "")
         if cli_path:
             set_current_cli(cli_path)
+            # 持久化为上次选择，重启后恢复
+            update_gui_settings({"cli_path": cli_path})
             await send_response(writer, 200, "application/json", b'{"ok":true}')
         else:
             await send_response(writer, 400, "application/json", b'{"error":"missing path"}')
@@ -1304,6 +1313,11 @@ async def send_response(writer: asyncio.StreamWriter, status: int, content_type:
 
 
 async def main():
+    # 恢复上次选中的 CLI（启动时 _current_cli 默认是第一个检测到的，这里覆盖为用户上次的选择）
+    saved_cli = get_gui_settings().get("cli_path", "")
+    if saved_cli and saved_cli in [c["path"] for c in get_available_clis()]:
+        set_current_cli(saved_cli)
+
     server = None
     last_error = None
     for port in range(DEFAULT_PORT, 65536):

@@ -163,7 +163,7 @@
   "notifyAttachmentPrompt": "Sent {count} attachments",
   "confirmDeleteSession": "Delete session \"{title}\"? This permanently deletes the local session record and cannot be undone.",
   "remote": "Remote",
-  "remoteTarget": "Remote Target",
+  "remoteTarget": "Target Machine",
   "remoteTargetNone": "Local machine (no remote)",
   "allowRemoteFix": "Allow remote writes",
   "remoteDiag": "Remote Access",

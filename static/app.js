@@ -31,6 +31,7 @@ const btnSend = document.getElementById('btn-send');
 const btnStop = document.getElementById('btn-stop');
 const btnNewSession = document.getElementById('btn-new-session');
 const modelSelect = document.getElementById('model-select');
+let savedModelPref = '';  // gui_settings 里上次使用的模型，刷新后用于恢复选择
 const cwdInput = document.getElementById('cwd-input');
 const connectionStatus = document.getElementById('connection-status');
 const costDisplay = document.getElementById('cost-display');
@@ -582,6 +583,7 @@ async function loadThemePreference() {
     const data = await resp.json();
     const language = data.language === 'zh' ? 'zh' : 'en';
     const size = normalizeFontSize(data.font_size_percent);
+    savedModelPref = data.default_model || '';
 
     if (data.theme === 'light' || data.theme === 'dark') {
       applyTheme(data.theme, false);
@@ -789,6 +791,22 @@ async function loadClis() {
   } catch (e) { /* ignore */ }
 }
 
+// 选中指定 CLI（若可用），并同步到服务端全局当前 CLI
+function selectCli(path) {
+  const cliSelect = document.getElementById('cli-select');
+  if (!cliSelect || !path) return false;
+  const has = Array.from(cliSelect.options).some(o => o.value === path);
+  if (!has || cliSelect.value === path) return has && cliSelect.value === path;
+  cliSelect.value = path;
+  fetch('/api/clis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  }).catch(() => {});
+  renderTopbarMeta();
+  return true;
+}
+
 // ─── CLI 安装引导 ────────────────────────────────────────────
 let cliInstallCommand = 'npm install -g @anthropic-ai/claude-code';
 let cliInstallPromptShown = false;
@@ -886,7 +904,8 @@ function initCliInstallModal() {
 }
 
 async function loadModels() {
-  const previousModel = modelSelect.value;
+  // 首次加载 select 为空，回退到 gui_settings 里上次使用的模型，使刷新后保持选择
+  const previousModel = modelSelect.value || savedModelPref;
   try {
     const resp = await fetch('/api/models');
     const models = await resp.json();
@@ -1011,6 +1030,12 @@ function initSSE() {
     if (data.remote_target_id && remoteTargetSelect) {
       remoteTargetSelect.value = data.remote_target_id;
       updateRemoteMutateRow();
+    }
+    // 恢复 CLI 选择
+    const cliSelectEl = document.getElementById('cli-select');
+    if (data.cli && cliSelectEl && [...cliSelectEl.options].some(o => o.value === data.cli)) {
+      cliSelectEl.value = data.cli;
+      renderTopbarMeta(data.model || '');
     }
     addSystemMsg(modelLabel ? t('sessionStarted', { model: modelLabel }) : t('sessionStartedPlain'));
   });
@@ -1557,6 +1582,9 @@ function initInput() {
   modelSelect.addEventListener('change', () => {
     renderTopbarMeta();
     loadSlashCommands();
+    // 记住选择，刷新后恢复
+    savedModelPref = modelSelect.value;
+    saveGuiSettings({ default_model: modelSelect.value });
   });
   cwdInput.addEventListener('change', loadSlashCommands);
   cwdInput.addEventListener('change', () => {
@@ -1909,6 +1937,7 @@ function sendMessage() {
   sendAction('send_message', {
     content,
     model: modelSelect.value,
+    cli: document.getElementById('cli-select')?.value || '',
     remote_target_id: remoteTargetSelect?.value || '',
     allow_remote_mutate: !!remoteAllowMutate?.checked,
   });
@@ -1963,6 +1992,7 @@ function startNewSession() {
   openCurrentCwdSessionGroup();
   sendAction('new_session', {
     model: modelSelect.value,
+    cli: document.getElementById('cli-select')?.value || '',
     cwd: cwdInput.value.trim() || null,
     skip_permissions: document.getElementById('skip-permissions').checked,
     remote_target_id: remoteTargetSelect?.value || '',
@@ -2264,7 +2294,7 @@ function renderSessionList(sessions) {
       if (e.target.classList.contains('session-item-delete') || e.target.classList.contains('session-item-rename')) return;
       const tokens = safeJsonParse(item.dataset.tokens, null);
       showPage('chat');
-      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model, Number(item.dataset.cost || 0), item.dataset.remoteTarget || '', tokens);
+      resumeSession(item.dataset.sid, item.dataset.cwd, item.dataset.model, Number(item.dataset.cost || 0), item.dataset.remoteTarget || '', tokens, item.dataset.cli || '');
     });
     item.querySelector('.session-item-delete').addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -2319,7 +2349,7 @@ function renderSessionItem(s) {
   const savedTokens = normalizeTokenUsage(s.total_tokens);
   const tokenTotal = tokenUsageTotal(savedTokens);
   const modelLabel = getDisplayModelName(s.model || '', false);
-  return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cost="${esc(savedCost)}" data-tokens="${esc(JSON.stringify(savedTokens))}" data-remote-target="${esc(s.remote_target_id || '')}">
+  return `<div class="session-item${isActive ? ' active' : ''}" data-sid="${esc(s.session_id)}" data-cwd="${esc(s.cwd)}" data-model="${esc(s.model)}" data-cli="${esc(s.cli || '')}" data-cost="${esc(savedCost)}" data-tokens="${esc(JSON.stringify(savedTokens))}" data-remote-target="${esc(s.remote_target_id || '')}">
     <div class="session-item-main">
       <div class="session-item-title">${esc(title)}</div>
       <div class="session-item-meta">${modelLabel ? `${esc(modelLabel)} · ` : ''}${esc(time)}${savedCost > 0 ? ` · $${savedCost.toFixed(4)}` : ''}${tokenTotal > 0 ? ` · ${formatTokenCount(tokenTotal)} tok` : ''}</div>
@@ -2371,7 +2401,7 @@ function openCurrentCwdSessionGroup() {
   sessionGroupOpenState.set(normalizeCwdKey(current), true);
 }
 
-async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetId = '', savedTokens = null) {
+async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetId = '', savedTokens = null, cli = '') {
   if (!clientId) {
     addSystemMsg(t('notConnected'), true);
     return;
@@ -2401,6 +2431,12 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetI
     remoteTargetSelect.value = remoteTargetId || '';
     updateRemoteMutateRow();
   }
+  // 恢复 CLI 选择
+  const cliSelectEl = document.getElementById('cli-select');
+  if (cliSelectEl && cli && [...cliSelectEl.options].some(o => o.value === cli)) {
+    cliSelectEl.value = cli;
+    renderTopbarMeta(model || modelSelect.value);
+  }
 
   addSystemMsg(t('restoring'));
 
@@ -2422,6 +2458,7 @@ async function resumeSession(sessionId, cwd, model, savedCost = 0, remoteTargetI
   const result = await sendAction('resume_session', {
     session_id: sessionId,
     model: model || modelSelect.value,
+    cli: cli || document.getElementById('cli-select')?.value || '',
     cwd: cwd || cwdInput.value.trim() || null,
     skip_permissions: document.getElementById('skip-permissions').checked,
     remote_target_id: remoteTargetId || remoteTargetSelect?.value || '',

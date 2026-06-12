@@ -103,6 +103,7 @@ def list_sessions() -> list[dict]:
             merged["total_cost_usd"] = float(existing.get("total_cost_usd") or 0)
             merged["total_tokens"] = normalize_tokens(existing.get("total_tokens"))
             merged["remote_target_id"] = existing.get("remote_target_id", "")
+            merged["cli"] = existing.get("cli", "")
             merged["manual_title"] = bool(existing.get("manual_title"))
             merged["created_at"] = existing.get("created_at") or discovered.get("created_at", "")
             merged["source"] = existing.get("source") or "gui"
@@ -204,7 +205,7 @@ def parse_session_jsonl(jsonl_path: Path) -> dict | None:
 
 
 def save_session(session_id: str, title: str, model: str, cwd: str,
-                 remote_target_id: str = "") -> dict:
+                 remote_target_id: str = "", cli: str = "") -> dict:
     """创建或更新会话记录"""
     sessions = _load()
     now = datetime.now().isoformat(timespec="seconds")
@@ -230,6 +231,8 @@ def save_session(session_id: str, title: str, model: str, cwd: str,
             s["total_tokens"] = normalize_tokens(s.get("total_tokens"))
             s["updated_at"] = now
             s["remote_target_id"] = remote_target_id
+            if cli:
+                s["cli"] = cli
             _save(sessions)
             return s
 
@@ -239,6 +242,7 @@ def save_session(session_id: str, title: str, model: str, cwd: str,
         "title": title or "新会话",
         "model": model,
         "cwd": cwd,
+        "cli": cli,
         "total_cost_usd": 0,
         "total_tokens": empty_tokens(),
         "remote_target_id": remote_target_id,
