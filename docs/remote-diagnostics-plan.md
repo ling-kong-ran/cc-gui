@@ -7,19 +7,19 @@
 
 ## 1. 背景与目标
 
-- **现状**：AI agent 跑在 server 机器上（即本项目 ccb-gui 所在机器），工具调用都在 server 本地执行。
+- **现状**：AI agent 跑在 server 机器上（即本项目 cc-bridge 所在机器），工具调用都在 server 本地执行。
 - **诉求**：目标机器（target）出了问题，但上面没有 Claude/ccb，也不方便安装。希望 server 上的 agent
   能去 target 上查日志、跑命令，辅助定位问题。
 - **目标**：
   - target 端**零安装**或极轻量（不装 Claude，最好不装任何自研程序）。
   - agent 的远程操作**显式、可审计、可控权限**。
-  - 与 ccb-gui 现有架构与"Python 标准库、subprocess 包装 CLI"的风格一致。
+  - 与 cc-bridge 现有架构与"Python 标准库、subprocess 包装 CLI"的风格一致。
 
 ---
 
 ## 2. 核心约束（为什么不能"直接实现"）
 
-在 ccb-gui 里，`server.py` 只做三件事：拉起 `ccb/claude -p` 子进程、把用户输入写进 stdin、
+在 cc-bridge 里，`server.py` 只做三件事：拉起 `ccb/claude -p` 子进程、把用户输入写进 stdin、
 转发 stdout 的 stream-json。**真正执行 Bash/Read/Glob 等工具的是 CLI 自己**，server 看不到也拦不住。
 
 因此无法"把本地 Bash 偷偷改成在远端跑"。正确做法是给 agent 一条**显式的远程执行通道**，让它知道
@@ -34,7 +34,7 @@
 ```
 ┌─────────────── server 机器 ───────────────┐         ┌──── target 机器 ────┐
 │                                            │         │                     │
-│  浏览器 ── ccb-gui server ── ccb/claude CLI │         │   sshd (系统自带)    │
+│  浏览器 ── cc-bridge server ── ccb/claude CLI │         │   sshd (系统自带)    │
 │                                  │         │   SSH   │      │              │
 │                          remote-bridge ────┼────────▶│   cmd/pwsh/bash      │
 │                          (MCP server)      │         │   日志、命令、文件     │
@@ -91,11 +91,11 @@ Windows target 默认 sshd shell 是 cmd，可在命令里显式 `powershell -Co
 
 ---
 
-## 6. 与 ccb-gui 的集成
+## 6. 与 cc-bridge 的集成
 
 - **目标机器配置**：在侧栏/设置里新增"远程目标"管理：`host / port / user / 认证方式（密钥路径）/ OS 类型 / 只读或可变更`。
   存到 `~/.ccb/remote_targets.json`（延续 GUI 偏好持久化模式）。
-- **会话绑定 target**：新建会话时可选一个目标机器。ccb-gui 把当前选中的 target 写入
+- **会话绑定 target**：新建会话时可选一个目标机器。cc-bridge 把当前选中的 target 写入
   `~/.ccb/current_target.json`，bridge 启动时读取它（或每个工具调用带 `target` 参数）。
   这样同一个 bridge 能服务不同 target，而不必为每台机器配一份 MCP。
 - **连接状态**：设置里加"测试连接"按钮（实际就是 `ssh host echo ok`），显示绿/红状态，类似现有 CLI 检测。
@@ -157,7 +157,7 @@ Windows target 默认 sshd shell 是 cmd，可在命令里显式 `powershell -Co
   跑通"查一台 Linux 的 `journalctl` / `tail` 日志"，确认价值与体验。
 - **Phase 1（MVP）**：实现 remote-bridge MCP server（Python 标准库），只做**只读工具**（§5 只读类），
   单 target、密钥登录、命令白名单、审计日志。Linux/macOS 优先。
-- **Phase 2（集成）**：ccb-gui 加"远程目标"配置 UI、会话绑定 target、连接测试、远程命令审计面板。
+- **Phase 2（集成）**：cc-bridge 加"远程目标"配置 UI、会话绑定 target、连接测试、远程命令审计面板。
 - **Phase 3（Windows & 变更能力）**：支持 Windows target（OpenSSH Server），加变更类工具 + 二次确认 + sudo 收口。
 - **Phase 4（车队）**：多 target 选择、批量诊断、（可选）对接 Ansible/SSM。
 

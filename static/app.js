@@ -1,5 +1,5 @@
 /**
- * CCB GUI - 前端主逻辑
+ * CC Bridge - 前端主逻辑
  * 使用 SSE (Server-Sent Events) + fetch POST 替代 WebSocket
  */
 
@@ -274,7 +274,7 @@ function notifyComplete(kind, detail = {}) {
   }
 
   try {
-    const notification = new Notification(title, { body, tag: `ccb-gui-${kind}`, renotify: true });
+    const notification = new Notification(title, { body, tag: `cc-bridge-${kind}`, renotify: true });
     notification.onclick = () => {
       try { window.focus(); } catch (e) { /* ignore */ }
       notification.close();

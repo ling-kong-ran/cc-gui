@@ -4,7 +4,7 @@ Remote Bridge - 一个用 Python 标准库实现的 stdio MCP server。
 它向 Claude Code CLI 暴露一组「远程只读/读写」工具，内部通过系统自带的 ssh 客户端
 在目标 Linux 机器上执行命令。target 端零安装（只需开启 sshd）。
 
-由 ccb-gui 在启动 CLI 时通过 --mcp-config 加载。运行所需信息从环境变量读取：
+由 cc-bridge 在启动 CLI 时通过 --mcp-config 加载。运行所需信息从环境变量读取：
   CCB_REMOTE_TARGET        目标机器 JSON（host/user/port/key_path…）
   CCB_REMOTE_ALLOW_MUTATE  "1" 时额外暴露可变更（读写模式）工具，默认只读模式
   CCB_REMOTE_AUDIT         审计日志路径（可选）

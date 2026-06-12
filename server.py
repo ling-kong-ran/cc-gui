@@ -1,5 +1,5 @@
 """
-CCB GUI Server - 纯 Python 标准库实现
+CC Bridge Server - 纯 Python 标准库实现
 HTTP 静态文件 + REST API + SSE (Server-Sent Events) 通信
 使用 SSE 替代 WebSocket 避免 Windows asyncio 兼容性问题
 """
@@ -1266,13 +1266,13 @@ async def main():
     local_url = f"http://{BROWSER_HOST}:{port}"
     lan_urls = [f"http://{ip}:{port}" for ip in get_lan_ips()]
     if port != DEFAULT_PORT:
-        print(f"[CCB GUI] Port {DEFAULT_PORT} is unavailable, using {port}")
-    print(f"[CCB GUI] Server running at {local_url}")
+        print(f"[CC Bridge] Port {DEFAULT_PORT} is unavailable, using {port}")
+    print(f"[CC Bridge] Server running at {local_url}")
     for lan_url in lan_urls:
-        print(f"[CCB GUI] LAN access: {lan_url}")
+        print(f"[CC Bridge] LAN access: {lan_url}")
     if not lan_urls:
-        print("[CCB GUI] LAN access: no LAN IPv4 address detected")
-    print(f"[CCB GUI] Press Ctrl+C to stop")
+        print("[CC Bridge] LAN access: no LAN IPv4 address detected")
+    print(f"[CC Bridge] Press Ctrl+C to stop")
 
     # 自动打开浏览器
     import webbrowser
@@ -1286,4 +1286,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[CCB GUI] Server stopped.")
+        print("\n[CC Bridge] Server stopped.")

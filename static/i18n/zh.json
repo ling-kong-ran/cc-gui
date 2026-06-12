@@ -1,7 +1,7 @@
 {
-  "pageTitle": "CCB 图形界面",
-  "appSubtitle": "Claude Code 桥接工具 v1.0",
-  "appSubtitleShort": "Claude Code 桥接工具",
+  "pageTitle": "CC Bridge",
+  "appSubtitle": "Claude Code Bridge v1.0",
+  "appSubtitleShort": "Claude Code Bridge",
   "newSession": "新建会话",
   "restartSession": "重新开始",
   "runtimeSettings": "运行设置",
