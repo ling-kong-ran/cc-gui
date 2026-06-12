@@ -25,6 +25,9 @@ from config_manager import (
     update_env_config,
     get_gui_settings,
     update_gui_settings,
+    get_env_profiles,
+    save_env_profile,
+    delete_env_profile,
     list_skills,
     list_agents,
     get_available_models,
@@ -1050,6 +1053,8 @@ async def handle_api_get(path: str, writer: asyncio.StreamWriter, query: dict = 
         data["default_cwd"] = DEFAULT_CWD
     elif path == "/api/env":
         data = get_env_config()
+    elif path == "/api/env-profiles":
+        data = get_env_profiles()
     elif path == "/api/skills":
         data = list_skills()
     elif path == "/api/agents":
@@ -1124,6 +1129,23 @@ async def handle_api_post(path: str, body: bytes, writer: asyncio.StreamWriter):
         return
     elif path == "/api/env":
         update_env_config(data)
+    elif path == "/api/env-profiles":
+        name = str(data.get("name", "")).strip()
+        env = data.get("env")
+        if not name or not isinstance(env, dict):
+            await send_response(writer, 400, "application/json", b'{"error":"name and env required"}')
+            return
+        save_env_profile(name, env)
+        await send_response(writer, 200, "application/json", b'{"ok":true}')
+        return
+    elif path == "/api/env-profiles/delete":
+        name = str(data.get("name", "")).strip()
+        if not name:
+            await send_response(writer, 400, "application/json", b'{"error":"name required"}')
+            return
+        delete_env_profile(name)
+        await send_response(writer, 200, "application/json", b'{"ok":true}')
+        return
     elif path == "/api/browse":
         result = browse_directory(data.get("path", ""))
         resp = json.dumps(result, ensure_ascii=False).encode("utf-8")

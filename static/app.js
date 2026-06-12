@@ -1997,6 +1997,8 @@ async function loadConfig() {
   try {
     const env = await (await fetch('/api/env')).json();
     renderEnvEditor(env);
+    renderEnvPasteSection();
+    loadEnvProfiles();
     const skills = await (await fetch('/api/skills')).json();
     renderSkills(skills);
     const agents = await (await fetch('/api/agents')).json();
@@ -2006,19 +2008,35 @@ async function loadConfig() {
   }
 }
 
+let _envProfilesCache = {};
+
 function renderEnvEditor(env) {
   const container = document.getElementById('env-fields');
   container.innerHTML = Object.entries(env).map(([k, v]) => `
     <div class="env-row">
-      <input class="env-key" value="${esc(k)}" readonly>
+      <input class="env-key" value="${esc(k)}">
       <input class="env-val" value="${esc(v)}">
+      <button class="env-row-del" title="${esc(t('delete'))}">×</button>
     </div>
-  `).join('');
+  `).join('') + `<div class="env-row env-row-add"><button class="env-add-btn">+</button></div>`;
+
+  container.querySelectorAll('.env-row-del').forEach(btn => {
+    btn.onclick = () => btn.closest('.env-row').remove();
+  });
+  container.querySelector('.env-add-btn').onclick = () => {
+    const addRow = container.querySelector('.env-row-add');
+    const row = document.createElement('div');
+    row.className = 'env-row';
+    row.innerHTML = `<input class="env-key" placeholder="KEY"><input class="env-val" placeholder="value"><button class="env-row-del" title="${esc(t('delete'))}">×</button>`;
+    row.querySelector('.env-row-del').onclick = () => row.remove();
+    container.insertBefore(row, addRow);
+    row.querySelector('.env-key').focus();
+  };
 
   document.getElementById('btn-save-env').onclick = async () => {
     const newEnv = {};
-    container.querySelectorAll('.env-row').forEach(row => {
-      const key = row.querySelector('.env-key').value;
+    container.querySelectorAll('.env-row:not(.env-row-add)').forEach(row => {
+      const key = row.querySelector('.env-key').value.trim();
       const val = row.querySelector('.env-val').value;
       if (key) newEnv[key] = val;
     });
@@ -2029,6 +2047,123 @@ function renderEnvEditor(env) {
     });
     addSystemMsg(t('envSaved'));
   };
+}
+
+function collectEditorEnv() {
+  const newEnv = {};
+  document.querySelectorAll('#env-fields .env-row:not(.env-row-add)').forEach(row => {
+    const key = row.querySelector('.env-key').value.trim();
+    const val = row.querySelector('.env-val').value;
+    if (key) newEnv[key] = val;
+  });
+  return newEnv;
+}
+
+async function loadEnvProfiles() {
+  try {
+    const data = await (await fetch('/api/env-profiles')).json();
+    _envProfilesCache = data.profiles || {};
+  } catch (e) { _envProfilesCache = {}; }
+  renderEnvProfilesBar(_envProfilesCache);
+}
+
+function renderEnvProfilesBar(profiles) {
+  const bar = document.getElementById('env-profiles-bar');
+  if (!bar) return;
+  const names = Object.keys(profiles);
+  bar.innerHTML = `
+    <select id="profile-select">
+      <option value="">${esc(t('profileSelect'))}</option>
+      ${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+    </select>
+    <button class="profile-btn" id="profile-load-btn">${esc(t('profileLoad'))}</button>
+    <button class="profile-btn" id="profile-save-btn">${esc(t('profileSaveAs'))}</button>
+    <button class="profile-btn danger" id="profile-del-btn">${esc(t('profileDelete'))}</button>
+  `;
+  bar.querySelector('#profile-load-btn').onclick = loadSelectedProfile;
+  bar.querySelector('#profile-save-btn').onclick = saveAsEnvProfile;
+  bar.querySelector('#profile-del-btn').onclick = deleteSelectedProfile;
+}
+
+function loadSelectedProfile() {
+  const sel = document.getElementById('profile-select');
+  const name = sel ? sel.value : '';
+  if (!name || !_envProfilesCache[name]) return;
+  renderEnvEditor(_envProfilesCache[name].env || {});
+  renderEnvPasteSection();
+  addSystemMsg(t('profileLoaded', { name }));
+}
+
+async function saveAsEnvProfile() {
+  const name = prompt(t('profileNamePrompt'));
+  if (!name || !name.trim()) {
+    if (name !== null) addSystemMsg(t('profileNameEmpty'));
+    return;
+  }
+  const env = collectEditorEnv();
+  await fetch('/api/env-profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.trim(), env }),
+  });
+  addSystemMsg(t('profileSaved', { name: name.trim() }));
+  await loadEnvProfiles();
+  const sel = document.getElementById('profile-select');
+  if (sel) sel.value = name.trim();
+}
+
+async function deleteSelectedProfile() {
+  const sel = document.getElementById('profile-select');
+  const name = sel ? sel.value : '';
+  if (!name) return;
+  if (!confirm(t('profileConfirmDelete', { name }))) return;
+  await fetch('/api/env-profiles/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  addSystemMsg(t('profileDeleted', { name }));
+  await loadEnvProfiles();
+}
+
+function renderEnvPasteSection() {
+  const container = document.getElementById('env-paste-section');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="env-paste-section">
+      <div class="env-paste-toggle">${esc(t('pasteJson'))}</div>
+      <div class="env-paste-body">
+        <textarea class="env-paste-textarea" placeholder='{"KEY": "value", ...}'></textarea>
+        <button class="env-paste-apply">${esc(t('pasteJsonApply'))}</button>
+      </div>
+    </div>
+  `;
+  const toggle = container.querySelector('.env-paste-toggle');
+  const body = container.querySelector('.env-paste-body');
+  toggle.onclick = () => {
+    toggle.classList.toggle('open');
+    body.classList.toggle('open');
+  };
+  container.querySelector('.env-paste-apply').onclick = applyPastedJson;
+}
+
+function applyPastedJson() {
+  const ta = document.querySelector('.env-paste-textarea');
+  if (!ta) return;
+  const raw = ta.value.trim();
+  if (!raw) return;
+  try {
+    const obj = JSON.parse(raw);
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error('not object');
+    const env = {};
+    for (const [k, v] of Object.entries(obj)) env[k] = String(v);
+    renderEnvEditor(env);
+    renderEnvPasteSection();
+    ta.value = '';
+    addSystemMsg(t('pasteJsonApplied'));
+  } catch (e) {
+    addSystemMsg(t('pasteJsonError'));
+  }
 }
 
 function renderSkills(skills) {

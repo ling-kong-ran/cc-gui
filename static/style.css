@@ -1570,6 +1570,21 @@ html.light-theme .select {
 }
 
 .env-val:focus { border-color: var(--green-dim); }
+.env-key:focus { border-color: var(--green-dim); color: var(--text-base); }
+
+.env-row-del {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 14px; padding: 0 4px; line-height: 1; opacity: 0.5; transition: opacity 0.15s, color 0.15s;
+}
+.env-row-del:hover { opacity: 1; color: #e55; }
+
+.env-row-add { justify-content: flex-start; }
+.env-add-btn {
+  font-size: 11px; padding: 3px 10px; cursor: pointer;
+  background: transparent; color: var(--green-dim); border: 1px dashed var(--border-dim);
+  border-radius: 3px; font-family: var(--font-mono); transition: all 0.15s;
+}
+.env-add-btn:hover { border-color: var(--green-dim); color: var(--green); }
 
 .btn-save {
   margin-top: 10px; padding: 7px 16px;
@@ -1584,6 +1599,70 @@ html.light-theme .select {
 .btn-save:hover { background: rgba(var(--accent-rgb),0.12); border-color: var(--green-dim); }
 
 .btn-save .btn-prefix { opacity: 0.5; }
+
+/* ─── Env Profiles Bar ─── */
+.env-profiles-bar {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-dim);
+}
+.env-profiles-bar > div {
+  display: flex; align-items: center; gap: 6px;
+}
+.env-profiles-bar .profile-label {
+  font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);
+  letter-spacing: 0.05em; text-transform: uppercase; min-width: 60px;
+}
+.env-profiles-bar select {
+  flex: 1; min-width: 140px;
+  font-size: 11px; padding: 5px 8px;
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border-dim);
+  border-radius: 3px; font-family: var(--font-mono); outline: none;
+  transition: border-color 0.15s;
+}
+.env-profiles-bar select:focus { border-color: var(--green-dim); }
+.env-profiles-bar .profile-btn {
+  font-size: 10px; padding: 4px 10px; cursor: pointer;
+  background: transparent; color: var(--green-dim); border: 1px solid var(--border-dim);
+  border-radius: 3px; font-family: var(--font-mono); transition: all 0.15s;
+  white-space: nowrap;
+}
+.env-profiles-bar .profile-btn:hover {
+  border-color: var(--green-dim); color: var(--green); background: rgba(var(--accent-rgb),0.08);
+}
+.env-profiles-bar .profile-btn.danger { color: var(--text-muted); border-color: transparent; }
+.env-profiles-bar .profile-btn.danger:hover { color: #e55; border-color: #e55; }
+
+/* ─── Env Paste Section ─── */
+.env-paste-section { margin-top: 8px; border-top: 1px solid var(--border-dim); padding-top: 6px; }
+.env-paste-toggle {
+  font-size: 10px; color: var(--text-muted); cursor: pointer;
+  font-family: var(--font-mono); user-select: none; padding: 3px 0; letter-spacing: 0.05em;
+  text-transform: uppercase; display: inline-block;
+}
+.env-paste-toggle:hover { color: var(--green-dim); }
+.env-paste-toggle::before { content: '▸ '; display: inline-block; transition: transform 0.15s; }
+.env-paste-toggle.open::before { content: '▾ '; }
+.env-paste-body { display: none; margin-top: 6px; }
+.env-paste-body.open { display: block; }
+.env-paste-textarea {
+  width: 100%; min-height: 70px; max-height: 180px; resize: vertical;
+  font-family: var(--font-mono); font-size: 11px; padding: 7px 8px;
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border-dim);
+  border-radius: 3px; box-sizing: border-box; outline: none;
+  transition: border-color 0.15s;
+}
+.env-paste-textarea:focus { border-color: var(--green-dim); }
+.env-paste-textarea::placeholder { color: var(--text-muted); opacity: 0.5; }
+.env-paste-apply {
+  margin-top: 6px; padding: 6px 14px;
+  background: rgba(var(--accent-rgb),0.07); color: var(--green);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono); letter-spacing: 0.08em;
+  cursor: pointer; transition: all var(--t-fast);
+}
+.env-paste-apply:hover { background: rgba(var(--accent-rgb),0.12); border-color: var(--green-dim); }
 
 .skill-item, .agent-item {
   display: flex; align-items: center; gap: 9px;

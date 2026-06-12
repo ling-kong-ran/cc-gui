@@ -206,5 +206,20 @@
   "remoteSshMissing": "本机未找到 SSH 客户端（需要 OpenSSH 或 WSL）",
   "remoteSshMissingWin": "Windows 上可在\"设置\"里安装 OpenSSH，或使用 WSL 的 SSH。密钥认证方式不需要检查此项。",
   "remoteKeyAuthUnaffected": "注意：若使用密钥认证，可正常添加和测试。此提示仅影响密码登录。",
-  "remoteInstallSsh": "如何安装 SSH？"
+  "remoteInstallSsh": "如何安装 SSH？",
+  "envProfiles": "配置方案",
+  "profileSelect": "选择方案",
+  "profileLoad": "加载",
+  "profileSaveAs": "另存为方案",
+  "profileDelete": "删除方案",
+  "profileSaved": "方案「{name}」已保存",
+  "profileDeleted": "方案「{name}」已删除",
+  "profileLoaded": "方案「{name}」已加载到编辑器",
+  "profileNamePrompt": "请输入方案名称：",
+  "profileNameEmpty": "方案名称不能为空",
+  "profileConfirmDelete": "确定删除方案「{name}」吗？",
+  "pasteJson": "粘贴 JSON",
+  "pasteJsonApply": "应用",
+  "pasteJsonError": "JSON 格式无效，请粘贴有效的 JSON 对象",
+  "pasteJsonApplied": "已应用到编辑器，点击「保存配置」生效"
 }

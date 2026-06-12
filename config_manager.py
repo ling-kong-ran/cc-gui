@@ -10,6 +10,7 @@ CLAUDE_DIR = Path(os.environ.get("USERPROFILE", "~")) / ".claude"
 CCB_DIR = Path.home() / ".ccb"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 GUI_SETTINGS_FILE = CCB_DIR / "gui_settings.json"
+ENV_PROFILES_FILE = CCB_DIR / "env_profiles.json"
 SKILLS_DIR = CLAUDE_DIR / "skills"
 AGENTS_DIR = CLAUDE_DIR / "agents"
 
@@ -70,6 +71,39 @@ def update_gui_settings(data: dict[str, Any]) -> dict[str, Any]:
     settings.update(data)
     save_gui_settings(settings)
     return settings
+
+
+# ─── 环境变量配置方案 ─────────────────────────────────────────
+def get_env_profiles() -> dict[str, Any]:
+    """读取所有环境变量配置方案。"""
+    if ENV_PROFILES_FILE.exists():
+        try:
+            return json.loads(ENV_PROFILES_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {"profiles": {}}
+    return {"profiles": {}}
+
+
+def save_env_profile(name: str, env: dict[str, str]):
+    """保存或覆盖一个环境变量配置方案。"""
+    data = get_env_profiles()
+    if "profiles" not in data:
+        data["profiles"] = {}
+    data["profiles"][name] = {"env": env}
+    ENV_PROFILES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ENV_PROFILES_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def delete_env_profile(name: str):
+    """删除一个环境变量配置方案。"""
+    data = get_env_profiles()
+    if "profiles" in data and name in data["profiles"]:
+        del data["profiles"][name]
+        ENV_PROFILES_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
 
 def list_skills() -> list[dict[str, str]]:
