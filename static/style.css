@@ -267,6 +267,7 @@ html, body {
   display: grid;
   gap: 7px;
   padding: 2px 9px 10px;
+  min-width: 0;
 }
 
 .runtime-panel-body .field-label {
@@ -1257,6 +1258,7 @@ html.light-theme .select {
 
 .picker-tabs {
   display: flex;
+  flex: 0 0 auto;
   gap: 6px;
   padding: 0 14px 10px;
   border-bottom: 1px solid var(--border-dim);
@@ -1277,6 +1279,8 @@ html.light-theme .select {
 .picker-tab:hover { color: var(--green); border-color: var(--green-dim); background: var(--green-faint); }
 
 .picker-local {
+  flex: 1 1 auto;
+  overflow-y: auto;
   padding: 18px 20px;
 }
 
@@ -1328,9 +1332,20 @@ html.light-theme .select {
 .attachment-remove:hover { color: var(--red); }
 
 /* ─── CWD ───────────────────────────────────────────────────── */
-.cwd-wrapper { display: flex; gap: 5px; }
+.cwd-wrapper {
+  display: flex;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
 
-.cwd-wrapper .cwd-input { flex: 1; cursor: pointer; min-width: 0; }
+.cwd-wrapper .cwd-input {
+  flex: 1 1 auto;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .btn-browse {
   display: flex; align-items: center; justify-content: center;
@@ -1508,8 +1523,14 @@ html.light-theme .select {
   border-radius: var(--radius-xl);
   width: 520px; max-width: 90vw; max-height: 70vh;
   display: flex; flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(var(--accent-rgb),0.05);
   animation: modalIn var(--t-base) var(--ease-spring) both;
+}
+
+.file-picker-modal {
+  width: 580px;
+  max-height: 75vh;
 }
 
 @keyframes modalIn {
@@ -1519,6 +1540,7 @@ html.light-theme .select {
 
 .picker-header {
   display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 auto;
   padding: 14px 18px; border-bottom: 1px solid var(--border-dim);
 }
 
@@ -1544,11 +1566,13 @@ html.light-theme .select {
 
 .picker-path {
   display: flex; align-items: center; gap: 8px;
+  flex: 0 0 auto;
   padding: 8px 16px; border-bottom: 1px solid var(--border-dim);
   background: var(--bg-deep);
 }
 
 .picker-search {
+  flex: 0 0 auto;
   padding: 9px 16px;
   border-bottom: 1px solid var(--border-dim);
   background: var(--bg-deep);
@@ -1573,6 +1597,14 @@ html.light-theme .select {
 
 .picker-search-input::placeholder { color: var(--text-ghost); }
 
+.picker-browser {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .picker-up {
   background: var(--bg-raised); border: 1px solid var(--border-dim);
   border-radius: var(--radius-xs); color: var(--text-muted);
@@ -1592,8 +1624,10 @@ html.light-theme .select {
 }
 
 .picker-list {
-  flex: 1; overflow-y: auto; padding: 6px;
-  min-height: 180px; max-height: 380px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px;
+  min-height: 0;
 }
 
 .picker-item {
@@ -1623,7 +1657,8 @@ html.light-theme .select {
 }
 
 .picker-footer {
-  display: flex; justify-content: flex-end;
+  display: flex; justify-content: space-between; align-items: center;
+  flex: 0 0 auto;
   padding: 11px 16px; border-top: 1px solid var(--border-dim);
 }
 

@@ -2382,11 +2382,15 @@ filePickerSearch.addEventListener('input', handleFilePickerSearchInput);
 filePickerClientChoose?.addEventListener('click', () => fileInput.click());
 filePickerServerBrowse?.addEventListener('click', () => setFilePickerMode('server'));
 
+function normalizeFilePickerMode(mode) {
+  return accessContext.isLocalhost && mode === 'local' ? 'server' : mode;
+}
+
 function getAttachmentSources() {
   const hasRemote = Boolean(remoteTargetSelect?.value);
   const sources = [];
   if (accessContext.isLocalhost) {
-    sources.push({ id: 'local', label: t('localFiles') });
+    sources.push({ id: 'server', label: t('serverWorkspace') });
   } else {
     sources.push({ id: 'client', label: t('thisDevice') });
     sources.push({ id: 'server', label: t('serverWorkspace') });
@@ -2401,7 +2405,7 @@ function openFilePicker() {
   updateFilePickerCount();
   renderFilePickerTabs();
   filePickerOverlay.style.display = 'flex';
-  setFilePickerMode(accessContext.isLocalhost ? 'local' : 'client');
+  setFilePickerMode(accessContext.isLocalhost ? 'server' : 'client');
 }
 
 function renderFilePickerTabs() {
@@ -2413,19 +2417,19 @@ function renderFilePickerTabs() {
 }
 
 function setFilePickerMode(mode) {
-  filePickerMode = mode;
-  filePickerTabs.querySelectorAll('.picker-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
-  const localMode = mode === 'client' || mode === 'local';
+  filePickerMode = normalizeFilePickerMode(mode);
+  filePickerTabs.querySelectorAll('.picker-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === filePickerMode));
+  const localMode = filePickerMode === 'client' || filePickerMode === 'local';
   filePickerLocal.style.display = localMode ? '' : 'none';
   filePickerBrowser.style.display = localMode ? 'none' : '';
   filePickerConfirm.style.display = localMode ? 'none' : '';
   if (localMode) {
-    filePickerLocalHint.textContent = mode === 'local' ? t('chooseLocalHint') : t('chooseClientHint');
-    filePickerServerBrowse.style.display = mode === 'local' ? '' : 'none';
+    filePickerLocalHint.textContent = filePickerMode === 'local' ? t('chooseLocalHint') : t('chooseClientHint');
+    filePickerServerBrowse.style.display = filePickerMode === 'local' ? '' : 'none';
     return;
   }
   filePickerConfirm.style.display = '';
-  navigateFilePicker(mode === 'remote' ? '/' : (cwdInput.value.trim() || accessContext.defaultCwd || '/'));
+  navigateFilePicker(filePickerMode === 'remote' ? '/' : (cwdInput.value.trim() || accessContext.defaultCwd || '/'));
 }
 
 function closeFilePicker() {

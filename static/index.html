@@ -390,7 +390,7 @@
 
   <!-- 文件选择器弹窗 -->
   <div id="file-picker-overlay" class="picker-overlay" style="display:none">
-    <div class="picker-modal" style="width:580px; max-height:75vh;">
+    <div class="picker-modal file-picker-modal">
       <div class="picker-header">
         <span class="picker-title" data-i18n="chooseAttachment">Choose Attachments</span>
         <button id="file-picker-close" class="picker-close" data-i18n="close">Close</button>
@@ -403,20 +403,20 @@
           <button id="file-picker-server-browse" class="btn-save" type="button" style="display:none"><span data-i18n="browseWorkspace">Browse workspace</span></button>
         </div>
       </div>
-      <div id="file-picker-browser">
-      <div class="picker-path">
-        <button id="file-picker-up" class="picker-up" title="Parent Directory" data-i18n-title="parentDir">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          <span data-i18n="parent">Parent</span>
-        </button>
-        <span id="file-picker-current-path" class="picker-current">/</span>
+      <div id="file-picker-browser" class="picker-browser">
+        <div class="picker-path">
+          <button id="file-picker-up" class="picker-up" title="Parent Directory" data-i18n-title="parentDir">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <span data-i18n="parent">Parent</span>
+          </button>
+          <span id="file-picker-current-path" class="picker-current">/</span>
+        </div>
+        <div class="picker-search">
+          <input id="file-picker-search" class="picker-search-input" type="search" placeholder="Search files or folders in this directory and subdirectories" data-i18n-placeholder="fileSearchPlaceholder">
+        </div>
+        <div id="file-picker-list" class="picker-list"></div>
       </div>
-      <div class="picker-search">
-        <input id="file-picker-search" class="picker-search-input" type="search" placeholder="Search files or folders in this directory and subdirectories" data-i18n-placeholder="fileSearchPlaceholder">
-      </div>
-      <div id="file-picker-list" class="picker-list" style="max-height:340px;"></div>
-      </div>
-      <div class="picker-footer" style="justify-content:space-between; align-items:center;">
+      <div class="picker-footer">
         <span id="file-picker-selected-count" style="font-family:var(--font-mono);color:var(--text-muted);">Selected 0 files</span>
         <button id="file-picker-confirm" class="btn btn-primary" style="width:auto; padding:8px 24px;">
           <span class="btn-prefix">&gt;</span> <span data-i18n="addAttachments">Add Attachments</span>
