@@ -206,5 +206,8 @@
   "remoteTestOk": "Connection successful",
   "remoteTestFail": "Connection failed",
   "remoteTestTimeout": "Connection timed out",
-  "remoteSshMissing": "No ssh client found on this machine"
+  "remoteSshMissing": "No SSH client found (Windows requires OpenSSH or WSL)",
+  "remoteSshMissingWin": "On Windows, install OpenSSH from Settings or use SSH from WSL. Key-based auth does not require this.",
+  "remoteKeyAuthUnaffected": "Note: Key-based auth works regardless. This notice only affects password login.",
+  "remoteInstallSsh": "How to install SSH?"
 }

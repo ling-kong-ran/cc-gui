@@ -203,5 +203,8 @@
   "remoteTestOk": "连接成功",
   "remoteTestFail": "连接失败",
   "remoteTestTimeout": "连接超时",
-  "remoteSshMissing": "本机未找到 ssh 客户端"
+  "remoteSshMissing": "本机未找到 SSH 客户端（需要 OpenSSH 或 WSL）",
+  "remoteSshMissingWin": "Windows 上可在\"设置\"里安装 OpenSSH，或使用 WSL 的 SSH。密钥认证方式不需要检查此项。",
+  "remoteKeyAuthUnaffected": "注意：若使用密钥认证，可正常添加和测试。此提示仅影响密码登录。",
+  "remoteInstallSsh": "如何安装 SSH？"
 }

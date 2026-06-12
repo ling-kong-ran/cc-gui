@@ -353,10 +353,17 @@ function updateRemoteAuthVisibility() {
   if (passHint) {
     const editing = !!document.getElementById('remote-form-id').value;
     const tg = remoteTargets.find(x => x.id === document.getElementById('remote-form-id').value);
-    if (!remotePasswordSupported) passHint.textContent = t('remoteSshMissing');
-    else if (editing && tg?.has_password) passHint.textContent = t('remotePasswordSaved');
+    if (!remotePasswordSupported) {
+      // SSH 缺失时，根据方法显示相应提示
+      if (method === 'password') {
+        passHint.innerHTML = `${t('remoteSshMissing')}<br><small style="color: #666; margin-top: 0.3em; display: block;">${t('remoteSshMissingWin')}</small>`;
+      } else {
+        // 密钥认证不受影响
+        passHint.innerHTML = `<small style="color: #999;">${t('remoteKeyAuthUnaffected')}</small>`;
+      }
+    } else if (editing && tg?.has_password) passHint.textContent = t('remotePasswordSaved');
     else passHint.textContent = t('remotePasswordHint');
-    passHint.classList.toggle('warn', !remotePasswordSupported);
+    passHint.classList.toggle('warn', !remotePasswordSupported && method === 'password');
   }
 }
 

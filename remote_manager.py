@@ -226,8 +226,10 @@ def build_ssh_argv(target: dict, remote_command: Optional[str] = None,
     user = str(target.get("user", "")).strip()
     port = int(target.get("port") or 22)
 
+    # 使用动态检测的 SSH 路径或环境变量
+    ssh_bin = _find_ssh_client() or _SSH_BIN
     argv = [
-        _SSH_BIN,
+        ssh_bin,
         "-o", "ConnectTimeout=8",
         "-o", "StrictHostKeyChecking=accept-new",
         "-p", str(port),
@@ -259,6 +261,42 @@ def _paramiko_available() -> bool:
         return False
 
 
+def _find_ssh_client() -> Optional[str]:
+    """查找 ssh 客户端，在 Windows 上检查常见安装位置。"""
+    # 先检查环境变量 CCB_SSH_BIN（可覆盖）
+    if _SSH_BIN != "ssh":
+        return _SSH_BIN if shutil.which(_SSH_BIN) else None
+
+    # 标准 PATH 搜索
+    found = shutil.which("ssh")
+    if found:
+        return found
+
+    # Windows 特殊处理：检查常见安装位置
+    if os.name == "nt":
+        common_paths = [
+            Path(os.environ.get("ProgramFiles", "")) / "OpenSSH" / "ssh.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "OpenSSH" / "ssh.exe",
+            Path(os.environ.get("USERPROFILE", "")) / ".ssh" / "ssh.exe",
+            Path("C:\\Program Files\\OpenSSH\\ssh.exe"),
+            Path("C:\\Program Files (x86)\\OpenSSH\\ssh.exe"),
+        ]
+        for p in common_paths:
+            if p.exists():
+                return str(p)
+
+        # 检查 WSL 中的 ssh（如果 wsl.exe 可用）
+        try:
+            result = subprocess.run(["wsl", "which", "ssh"],
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                return "wsl"  # 标记为可通过 WSL 使用
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    return None
+
+
 def password_supported() -> bool:
     """是否能进行非交互密码登录。
 
@@ -267,7 +305,7 @@ def password_supported() -> bool:
     """
     if _paramiko_available():
         return True
-    return shutil.which(_SSH_BIN) is not None
+    return _find_ssh_client() is not None
 
 
 def _load_pkey_from_string(paramiko, text: str):
