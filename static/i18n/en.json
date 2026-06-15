@@ -224,5 +224,19 @@
   "pasteJson": "Paste JSON",
   "pasteJsonApply": "Apply",
   "pasteJsonError": "Invalid JSON. Please paste a valid JSON object.",
-  "pasteJsonApplied": "Applied to editor. Click Save to persist."
+  "pasteJsonApplied": "Applied to editor. Click Save to persist.",
+  "autoUpdate": "Auto Update",
+  "autoUpdateDesc": "Check for updates on startup",
+  "version": "Version",
+  "checkUpdate": "Check for updates",
+  "updateTitle": "Update Available",
+  "updateAvailableDesc": "A new version is available.",
+  "updateNow": "Update now",
+  "skipVersion": "Skip this version",
+  "updateSuccess": "Updated, restarting…",
+  "updateFailed": "Update check failed",
+  "updateRestartManual": "Update done. Please restart the server manually.",
+  "updateUpToDate": "Already up to date",
+  "updateChecking": "Updating…",
+  "quoteMessage": "Quote"
 }

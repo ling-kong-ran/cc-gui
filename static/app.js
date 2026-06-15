@@ -32,6 +32,10 @@ const btnStop = document.getElementById('btn-stop');
 const btnNewSession = document.getElementById('btn-new-session');
 const modelSelect = document.getElementById('model-select');
 let savedModelPref = '';  // gui_settings 里上次使用的模型，刷新后用于恢复选择
+let autoUpdateEnabled = true;  // 是否启动时自动检查更新
+let skipUpdateVersion = '';    // 被跳过的远端版本 SHA
+let updateInfo = null;         // 最近一次 check-update 的结果
+let quoteSourceText = '';      // 右键引用时暂存的消息文本
 const cwdInput = document.getElementById('cwd-input');
 const connectionStatus = document.getElementById('connection-status');
 const costDisplay = document.getElementById('cost-display');
@@ -86,6 +90,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSSE();
   initInput();
   initCliInstallModal();
+  initUpdateModal();
+  initMessageContextMenu();
   initRemote();
   loadDefaultCwd();
   loadClis();
@@ -93,6 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadConfig();
   loadSessions();
   initFocusConfigReload();
+  if (autoUpdateEnabled) checkForUpdate();
 });
 
 async function loadDefaultCwd() {
@@ -584,6 +591,10 @@ async function loadThemePreference() {
     const language = data.language === 'zh' ? 'zh' : 'en';
     const size = normalizeFontSize(data.font_size_percent);
     savedModelPref = data.default_model || '';
+    autoUpdateEnabled = data.auto_update_enabled !== false;
+    skipUpdateVersion = data.skip_update_version || '';
+    const autoUpdateToggle = document.getElementById('auto-update-toggle');
+    if (autoUpdateToggle) autoUpdateToggle.checked = autoUpdateEnabled;
 
     if (data.theme === 'light' || data.theme === 'dark') {
       applyTheme(data.theme, false);
@@ -900,6 +911,118 @@ function initCliInstallModal() {
   document.getElementById('cli-install-run')?.addEventListener('click', runCliAutoInstall);
   document.getElementById('cli-install-overlay')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCliInstallModal();
+  });
+}
+
+// ─── 自动更新 ────────────────────────────────────────────────
+let updateRunning = false;
+
+function setUpdateStatus(text, kind) {
+  const status = document.getElementById('update-status');
+  if (!status) return;
+  if (!text) { status.style.display = 'none'; status.textContent = ''; return; }
+  status.style.display = '';
+  status.textContent = text;
+  status.className = `cli-install-status${kind ? ' ' + kind : ''}`;
+}
+
+function openUpdateModal() {
+  const overlay = document.getElementById('update-overlay');
+  if (overlay) overlay.style.display = '';
+}
+
+function closeUpdateModal() {
+  const overlay = document.getElementById('update-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function checkForUpdate(manual = false) {
+  try {
+    const resp = await fetch('/api/check-update');
+    const data = await resp.json();
+    updateInfo = data;
+    if (!data.ok) {
+      if (manual) addSystemMsg(t('updateFailed'), true);
+      return;
+    }
+    const versionEl = document.getElementById('app-version');
+    if (versionEl && data.local_short) versionEl.textContent = data.local_short;
+
+    if (data.has_update && (manual || data.remote !== skipUpdateVersion)) {
+      const changelog = document.getElementById('update-changelog');
+      if (changelog) {
+        if (data.commits) { changelog.style.display = ''; changelog.textContent = data.commits; }
+        else { changelog.style.display = 'none'; changelog.textContent = ''; }
+      }
+      setUpdateStatus('', '');
+      const runBtn = document.getElementById('update-run');
+      if (runBtn) runBtn.disabled = false;
+      openUpdateModal();
+    } else if (manual) {
+      addSystemMsg(t('updateUpToDate'));
+    }
+  } catch (e) {
+    if (manual) addSystemMsg(t('updateFailed'), true);
+  }
+}
+
+async function runUpdate() {
+  if (updateRunning) return;
+  updateRunning = true;
+  const runBtn = document.getElementById('update-run');
+  if (runBtn) runBtn.disabled = true;
+  setUpdateStatus(t('updateChecking'), '');
+  try {
+    const resp = await fetch('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const result = await resp.json();
+    const changelog = document.getElementById('update-changelog');
+    if (changelog && result.output) { changelog.style.display = ''; changelog.textContent = result.output; }
+    if (result.ok) {
+      setUpdateStatus(t('updateSuccess'), 'ok');
+      try {
+        await fetch('/api/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      } catch (e) { /* 重启会断开连接，忽略 */ }
+      waitForServerAndReload();
+    } else {
+      setUpdateStatus(t('updateRestartManual'), 'err');
+      if (runBtn) runBtn.disabled = false;
+    }
+  } catch (e) {
+    setUpdateStatus(t('updateFailed'), 'err');
+    if (runBtn) runBtn.disabled = false;
+  } finally {
+    updateRunning = false;
+  }
+}
+
+function skipThisVersion() {
+  if (updateInfo && updateInfo.remote) {
+    skipUpdateVersion = updateInfo.remote;
+    saveGuiSettings({ skip_update_version: updateInfo.remote });
+  }
+  closeUpdateModal();
+}
+
+async function waitForServerAndReload(attempt = 0) {
+  if (attempt > 40) { setUpdateStatus(t('updateRestartManual'), 'err'); return; }
+  try {
+    const resp = await fetch('/api/gui-settings', { cache: 'no-store' });
+    if (resp.ok) { location.reload(); return; }
+  } catch (e) { /* 服务重启中，继续等待 */ }
+  setTimeout(() => waitForServerAndReload(attempt + 1), 1500);
+}
+
+function initUpdateModal() {
+  document.getElementById('update-close')?.addEventListener('click', closeUpdateModal);
+  document.getElementById('update-skip')?.addEventListener('click', skipThisVersion);
+  document.getElementById('update-run')?.addEventListener('click', runUpdate);
+  document.getElementById('btn-check-update')?.addEventListener('click', () => checkForUpdate(true));
+  document.getElementById('update-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeUpdateModal();
+  });
+  document.getElementById('auto-update-toggle')?.addEventListener('change', (e) => {
+    autoUpdateEnabled = e.target.checked;
+    saveGuiSettings({ auto_update_enabled: autoUpdateEnabled });
   });
 }
 
@@ -1641,6 +1764,59 @@ function buildConversationMarkdown() {
 
 function domText(el) {
   return (el.querySelector('.msg-content') || el).innerText.trim();
+}
+
+// ─── 消息右键引用 ────────────────────────────────────────────
+function hideMsgContextMenu() {
+  const menu = document.getElementById('msg-context-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+function quoteIntoInput(text) {
+  if (!text) return;
+  const quoted = text.split('\n').map(line => `> ${line}`).join('\n');
+  const existing = inputEl.value;
+  inputEl.value = existing ? `${quoted}\n\n${existing}` : `${quoted}\n\n`;
+  showPage('chat');
+  inputEl.focus();
+  inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length;
+  // 设置 .value 不会触发 input 事件，手动触发自适应高度
+  inputEl.dispatchEvent(new Event('input'));
+}
+
+function initMessageContextMenu() {
+  const menu = document.getElementById('msg-context-menu');
+  if (!menu) return;
+
+  messagesEl.addEventListener('contextmenu', (e) => {
+    const msgEl = e.target.closest('.message');
+    if (!msgEl) return;
+    e.preventDefault();
+    quoteSourceText = domText(msgEl);
+    if (!quoteSourceText) return;
+    // 先显示以便测量尺寸，再做视口边界收敛
+    menu.style.display = 'block';
+    const rect = menu.getBoundingClientRect();
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 4;
+    if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 4;
+    menu.style.left = Math.max(4, x) + 'px';
+    menu.style.top = Math.max(4, y) + 'px';
+  });
+
+  menu.querySelector('[data-action="quote"]')?.addEventListener('click', () => {
+    quoteIntoInput(quoteSourceText);
+    hideMsgContextMenu();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target)) hideMsgContextMenu();
+  });
+  document.addEventListener('scroll', hideMsgContextMenu, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideMsgContextMenu();
+  });
 }
 
 function handleGlobalShortcuts(e) {

@@ -258,6 +258,23 @@
                   <span class="toggle-text" data-i18n="allowLanAccess">Allow devices outside localhost to access this GUI</span>
                 </label>
               </div>
+              <div class="settings-row">
+                <label class="field-label" data-i18n="autoUpdate">Auto Update</label>
+                <label class="toggle-label settings-toggle">
+                  <span class="toggle-track">
+                    <input type="checkbox" id="auto-update-toggle">
+                    <span class="toggle-indicator"></span>
+                  </span>
+                  <span class="toggle-text" data-i18n="autoUpdateDesc">Check for updates on startup</span>
+                </label>
+              </div>
+              <div class="settings-row">
+                <label class="field-label" data-i18n="version">Version</label>
+                <div class="update-check-row">
+                  <span id="app-version" class="app-version">—</span>
+                  <button id="btn-check-update" class="btn-mini" type="button" data-i18n="checkUpdate">Check for updates</button>
+                </div>
+              </div>
             </div>
           </section>
           <section class="config-section">
@@ -489,6 +506,30 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <div id="update-overlay" class="picker-overlay" style="display:none">
+    <div class="picker-modal" style="width:520px;">
+      <div class="picker-header">
+        <span class="picker-title" data-i18n="updateTitle">Update Available</span>
+        <button id="update-close" class="picker-close" data-i18n="close">Close</button>
+      </div>
+      <div class="cli-install-body">
+        <p class="cli-install-desc" data-i18n="updateAvailableDesc">A new version is available.</p>
+        <pre id="update-changelog" class="cli-install-output" style="display:none"></pre>
+        <div id="update-status" class="cli-install-status" style="display:none"></div>
+      </div>
+      <div class="picker-footer" style="justify-content:space-between; align-items:center;">
+        <button id="update-skip" class="btn" style="width:auto; padding:8px 18px;" data-i18n="skipVersion">Skip this version</button>
+        <button id="update-run" class="btn btn-primary" style="width:auto; padding:8px 24px;">
+          <span class="btn-prefix">&gt;</span> <span data-i18n="updateNow">Update now</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="msg-context-menu" class="msg-context-menu" style="display:none">
+    <button type="button" class="msg-context-item" data-action="quote" data-i18n="quoteMessage">Quote</button>
   </div>
 
   <script src="/static/app.js"></script>

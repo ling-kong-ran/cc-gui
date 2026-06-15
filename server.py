@@ -602,6 +602,92 @@ async def install_cli() -> dict:
     }
 
 
+# ─── 自动更新 ─────────────────────────────────────────────
+REPO_DIR = Path(__file__).resolve().parent
+_update_lock = asyncio.Lock()
+
+
+async def _run_git(*args, timeout: int = 30) -> tuple[int, str]:
+    """在仓库目录运行 git 子命令，返回 (returncode, 合并输出)。git 不存在时 returncode=-1。"""
+    import shutil as _shutil
+
+    git = _shutil.which("git")
+    if not git:
+        return -1, "git_not_found"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            git, *args,
+            cwd=str(REPO_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            limit=1024 * 1024 * 5,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        output = (stdout or b"").decode("utf-8", errors="replace").strip()
+        return proc.returncode, output
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except (ProcessLookupError, UnboundLocalError):
+            pass
+        return -2, "timeout"
+    except Exception as exc:
+        return -3, str(exc)
+
+
+async def check_update() -> dict:
+    """检查远端 origin/master 是否有比本地 HEAD 更新的提交。"""
+    # 必须先确认是 git 仓库
+    code, _ = await _run_git("rev-parse", "--is-inside-work-tree", timeout=10)
+    if code != 0:
+        return {"ok": False, "error": "git_unavailable"}
+
+    code, _ = await _run_git("fetch", "--quiet", "origin", "master", timeout=30)
+    if code != 0:
+        return {"ok": False, "error": "fetch_failed"}
+
+    code_l, local = await _run_git("rev-parse", "HEAD", timeout=10)
+    code_r, remote = await _run_git("rev-parse", "origin/master", timeout=10)
+    if code_l != 0 or code_r != 0:
+        return {"ok": False, "error": "rev_parse_failed"}
+
+    has_update = bool(local) and bool(remote) and local != remote
+    commits = ""
+    if has_update:
+        _, commits = await _run_git("log", "--oneline", "-20", "HEAD..origin/master", timeout=10)
+
+    return {
+        "ok": True,
+        "has_update": has_update,
+        "local": local,
+        "remote": remote,
+        "local_short": local[:7],
+        "remote_short": remote[:7],
+        "commits": commits,
+        "error": None,
+    }
+
+
+async def apply_update() -> dict:
+    """git pull --ff-only origin master 拉取更新。"""
+    if _update_lock.locked():
+        return {"ok": False, "error": "update_in_progress"}
+    async with _update_lock:
+        code, output = await _run_git("pull", "--ff-only", "origin", "master", timeout=120)
+    if code != 0:
+        return {"ok": False, "error": "pull_failed", "output": output[-4000:]}
+    return {"ok": True, "output": output[-4000:], "error": None}
+
+
+def restart_server():
+    """用 os.execv 原地重启服务进程（best-effort）。"""
+    try:
+        os.execv(sys.executable, [sys.executable, str(REPO_DIR / "server.py")])
+    except Exception:
+        # 重启失败时不抛出，前端会提示手动重启
+        pass
+
+
 # ─── SSE 推送 ──────────────────────────────────────────────
 async def push_event(client_id: str, event_type: str, data: dict):
     """向指定 SSE 客户端推送事件"""
@@ -1060,6 +1146,11 @@ async def handle_api_get(path: str, writer: asyncio.StreamWriter, query: dict = 
         data["default_cwd"] = DEFAULT_CWD
     elif path == "/api/env":
         data = get_env_config()
+    elif path == "/api/check-update":
+        result = await check_update()
+        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
     elif path == "/api/env-profiles":
         data = get_env_profiles()
     elif path == "/api/skills":
@@ -1226,6 +1317,16 @@ async def handle_api_post(path: str, body: bytes, writer: asyncio.StreamWriter):
         result = await install_cli()
         resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
         await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
+    elif path == "/api/update":
+        result = await apply_update()
+        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        await send_response(writer, 200, "application/json; charset=utf-8", resp)
+        return
+    elif path == "/api/restart":
+        await send_response(writer, 200, "application/json", b'{"ok":true}')
+        # 先把响应发出去，再延迟重启，确保前端能进入轮询
+        asyncio.get_event_loop().call_later(0.5, restart_server)
         return
     elif path == "/api/clis":
         cli_path = data.get("path", "")
